@@ -1,4 +1,5 @@
 /__pycache__
 /.vscode
 /space-trace-env
-/space_trace/__pycache__
+/*/__pycache__
+/dist

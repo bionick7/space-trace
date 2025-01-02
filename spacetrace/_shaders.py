@@ -1,3 +1,8 @@
+'''
+	Custom shaders for spacetrace.
+    vertex and fragment shaders in GLSL 3.3
+'''
+
 trajectory_shader_vs = """
 #version 330
 
@@ -28,13 +33,10 @@ void main() {
 
 	time_out = time;
 }
-
-
 """
 
 trajectory_shader_fs = """
 #version 330
-
 
 // Input vertex attributes (from vertex shader)
 smooth in float y_offset;
@@ -54,5 +56,4 @@ void main() {
         discard;
     }
 }
-
 """

@@ -3,14 +3,14 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "space-trace"
-version = "0.0.1"
+name = "spacetrace"
+version = "0.1.0"
 authors = [
   { name="Nick Felten", email="nickfelten@yahoo.com" },
 ]
 description = "A small example package"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 license = {text = "MIT License"}
 dependencies = [
   "raylib", "numpy"

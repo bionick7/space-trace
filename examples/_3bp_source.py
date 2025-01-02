@@ -1,7 +1,9 @@
 from typing import Literal
-
 import numpy as np
-import spacetrace
+
+'''
+    Generates data for example in '3_body_problem.py'.
+'''
 
 def cr3bp_dynamics(state, t, mu):
 
