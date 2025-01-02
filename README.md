@@ -6,6 +6,9 @@ plot trajectories and inspect them visually.
 This tool should be used similarly to matplotlib's 3d plotting tool, but optimized for interactivity and inspection, 
 as well as drawing large trajectories at a smooth framerate.
 
+![Screenshot 1](https://images/img1.png)
+![Screenshot 2](https://images/img2.png)
+
 ## Installation
 Spacetrace is a standard python package available on pypi:
 ```bash
