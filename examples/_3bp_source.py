@@ -1,5 +1,7 @@
+from typing import Literal
+
 import numpy as np
-import space_trace
+import spacetrace
 
 def cr3bp_dynamics(state, t, mu):
 
@@ -33,7 +35,7 @@ def rk4_step(f, x, t, dt, *args):
 
 def circular_restriced_three_body_problem(initial_state, mu):
     time_step = 0.01
-    epochs = np.arange(0, 10, time_step)
+    epochs = np.arange(0, np.pi*2, time_step)
     states = np.zeros((len(epochs), 6))
     state = initial_state.copy()
     for i, t in enumerate(epochs):
@@ -43,7 +45,7 @@ def circular_restriced_three_body_problem(initial_state, mu):
     return states, epochs
 
 
-def generate_3bp_data():
+def generate_3bp_data(mode: Literal['normalized', 'inertial']):
     L1 = 0.8490659859092115
 
     m_1 = 5.974e24  # kg
@@ -52,4 +54,14 @@ def generate_3bp_data():
 
     initial_state = np.array([L1, 0, .01, 0, 0, 0])
 
-    return circular_restriced_three_body_problem(initial_state, mu)
+    states, epochs = circular_restriced_three_body_problem(initial_state, mu)
+    transformed_states = np.zeros_like(states)
+    if mode == 'inertial':
+        transformed_states[:, 0] = np.cos(epochs) * states[:, 0] - np.sin(epochs) * states[:, 1]
+        transformed_states[:, 1] = np.sin(epochs) * states[:, 0] + np.cos(epochs) * states[:, 1]
+        transformed_states[:, 2] = states[:, 2]
+        transformed_states[:, 3] = np.cos(epochs) * states[:, 3] - np.sin(epochs) * states[:, 4]
+        transformed_states[:, 4] = np.sin(epochs) * states[:, 3] + np.cos(epochs) * states[:, 4]
+        transformed_states[:, 5] = states[:, 5]
+        return transformed_states, epochs
+    return states, epochs

@@ -1,5 +1,5 @@
 import numpy as np
-import space_trace
+import spacetrace
 
 def circular_orbit():
     N = 30_000
@@ -7,10 +7,10 @@ def circular_orbit():
     thetas = np.linspace(0, 2*np.pi, N)
     rr = np.array([np.cos(thetas), np.sin(thetas), np.zeros_like(thetas)]).T * 7e6
 
-    scene = space_trace.Scene()
+    scene = spacetrace.Scene()
     scene.add_trajectory(tt, rr)
     scene.add_static_body(0, 0, 0, radius=6.7e6, name='Earth', color=(0,0.5,1))
-    space_trace.show_scene(scene)
+    spacetrace.show_scene(scene)
 
 if __name__ == '__main__':
     circular_orbit()
