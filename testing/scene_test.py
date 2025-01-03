@@ -2,6 +2,11 @@ import unittest
 import numpy as np
 from spacetrace.scene import Scene, Trajectory, Body, ReferenceFrame
 
+'''
+    Far from rigorous, as mosts testing is done visually.
+    This justs checks if all the data is received correctly in setup
+'''
+
 class TestScene(unittest.TestCase):
 
     def setUp(self):

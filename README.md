@@ -6,8 +6,8 @@ plot trajectories and inspect them visually.
 This tool should be used similarly to matplotlib's 3d plotting tool, but optimized for interactivity and inspection, 
 as well as drawing large trajectories at a smooth framerate.
 
-![Screenshot 1](https://images/img1.png)
-![Screenshot 2](https://images/img2.png)
+<!--![Screenshot 1](/images/img1.png) -->
+![Screenshot 2](/images/img2.png)
 
 ## Installation
 Spacetrace is a standard python package available on pypi:
@@ -24,7 +24,7 @@ The most basic usecase is as follows:
 
     scene = spacetrace.Scene()
     scene.add_trajectory(epochs, states)
-    scene.add_static_body(0, 0, 0, radius=6.7e6, name='Earth', color=(0,0.5,1))
+    scene.add_static_body(0, 0, 0, radius=6.7e6, name='Earth', color='blue')
     spacetrace.show_scene(scene)
 ```
 where `states` is a numpy array of size N x 3 or N x 6 and  epochs is a numpy array of size N, 
@@ -32,6 +32,15 @@ with the corresponding times values. This program will draw the trajectory and a
 representing Earth for reference.
 
 For more details see the documentation within the source files (`spacetrace/*`) or the examples (`examples/*`)
+
+## GUI
+
+- Middle mouse button to pan camera
+- RMB click to offset camera vertically
+- shift + RMB to offset camera horizontally
+- Drag slider at the bottom to readjust time
+- Left click on entity label (top left) to hide/show
+- Press F while hovering over entity label to focus
 
 ## License
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.

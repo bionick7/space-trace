@@ -2,4 +2,4 @@
 /.vscode
 /space-trace-env
 /*/__pycache__
-/dist
+/dist/
