@@ -15,8 +15,24 @@ DEFAULT_FRAME_NAME = 'Default Frame'
 # COLOR HANDLING
 # ==============
 
+def hex_to_color(hex: int) -> tuple[float, float, float]:
+    return (
+        ((hex >> 16) & 0xFF) / 255,
+        ((hex >> 8) & 0xFF) / 255, 
+        (hex & 0xFF) / 255
+    )
+__palette = {}
+__palette['bg'] = hex_to_color(0x12141c)
+__palette['blue'] = hex_to_color(0x454e7e)
+__palette['green'] = hex_to_color(0x4Fc76C)
+__palette['red'] = hex_to_color(0xFF5155)
+__palette['white'] = hex_to_color(0xfaf7d5)
+__palette['gray'] = hex_to_color(0x735e4c)
+__palette['main'] = __palette['white']
+__palette['accent'] = __palette['blue']
+__palette['grey'] = __palette['gray']
 
-_ColorIDLiteral = Literal['bg', 'blue', 'green', 'red', 'white', 'main', 'accent']
+_ColorIDLiteral = Literal['bg', 'blue', 'green', 'red', 'white', 'main', 'accent', 'gray', 'grey']
 _ColorType = tuple[float, float, float] | _ColorIDLiteral
 
 def default_palette(name: _ColorIDLiteral) -> tuple[float, float, float]:
@@ -28,27 +44,7 @@ def default_palette(name: _ColorIDLiteral) -> tuple[float, float, float]:
     Pallette is a modification of https://lospec.com/palette-list/offshore
     '''
 
-    def hex_to_color(hex: int) -> tuple[float, float, float]:
-        return (
-            ((hex >> 16) & 0xFF) / 255,
-            ((hex >> 8) & 0xFF) / 255, 
-            (hex & 0xFF) / 255
-        )
-
-    match name:
-        case 'bg':
-            return hex_to_color(0x12141c)
-        case 'blue' | 'accent':
-            return hex_to_color(0x454e7e)
-        case 'green':
-            return hex_to_color(0x4Fc76C)
-        case 'red':
-            return hex_to_color(0xFF5155)
-        case 'white' | 'main':
-            return hex_to_color(0xfaf7d5)
-        case 'gray' | 'grey': 
-            return hex_to_color(0x735e4c)
-    return hex_to_color(0xFF00FF)
+    return __palette.get(name, (1, 0, 1))
 
 
 class Color():
@@ -204,7 +200,7 @@ class Scene():
             raise ValueError("States should have 3 or 6 columns")
 
         for i in range(parts):
-            start = max(0, i * 2**14 - 1)  # Link up to the previous one
+            start = max(0, i * 2**14 - 1)  # Link up t0.0.0 the previous one
             end = min((i+1) * 2**14, total_length)
             self._add_trajectory_path(
                 epochs[start:end], states[start:end], len(self.trajectories))
