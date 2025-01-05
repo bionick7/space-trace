@@ -122,6 +122,7 @@ class DrawApplication():
             mouse_delta = rl.get_mouse_delta()
             self.pitch += mouse_delta.y * 0.005
             self.yaw   -= mouse_delta.x * 0.005
+            self.pitch = min(max(self.pitch, -np.pi/2 + 1e-4), np.pi/2 - 1e-4)
 
         elif self._camera_state == 'dragging_horizontal':
             self.set_focus(None)
@@ -227,6 +228,11 @@ class DrawApplication():
 
         rl.end_shader_mode()
 
+    def _draw_axis_cross(self, point: rl.Vector3, extend: float, rl_color: rl.Color):
+        rl.draw_line_3d(rl.vector3_add(point, rl.Vector3(-extend,0,0)), rl.vector3_add(point, rl.Vector3(extend,0,0)), rl_color)
+        rl.draw_line_3d(rl.vector3_add(point, rl.Vector3(0,-extend,0)), rl.vector3_add(point, rl.Vector3(0,extend,0)), rl_color)
+        rl.draw_line_3d(rl.vector3_add(point, rl.Vector3(0,0,-extend)), rl.vector3_add(point, rl.Vector3(0,0,extend)), rl_color)
+
     def _draw_bodies(self):
         '''
             Draws all the bodies in the scene.
@@ -239,8 +245,12 @@ class DrawApplication():
             pos_2d = rl.Vector3(r[0], 0, r[2])
             color = body.color.as_rl_color()
 
-            rl.draw_line_3d(pos_2d, pos_3d, rl.color_alpha(color, 0.5))
-            rl.draw_sphere_ex(pos_3d, body.radius, 32, 64, color)
+            if r[1] != 0:
+                rl.draw_line_3d(pos_2d, pos_3d, rl.color_alpha(color, 0.5))
+            if body.shape == 'cross':
+                self._draw_axis_cross(pos_3d, body.radius, color)
+            else:
+                rl.draw_sphere_ex(pos_3d, body.radius, 32, 64, color)
             
     def _draw_time_bar(self):
         '''

@@ -8,12 +8,12 @@ version = "0.1.1"
 authors = [
   { name="Nick Felten", email="nickfelten@yahoo.com" },
 ]
-description = "A small example package"
+description = "A minimalist packadge for vizualizing 3D trajectories in space."
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT License"}
 dependencies = [
-  "raylib", "numpy"
+  "raylib>=5.5.0", "numpy"
 ]
 classifiers = [
   "Topic :: Scientific/Engineering :: Visualization",

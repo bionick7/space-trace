@@ -140,9 +140,15 @@ class Body(SceneEntity):
     Represented by a colored sphere of a certain radius.
     Mostly represents a celestial body.
     '''
-    def __init__(self, name: str, radius: float, color: _ColorType='main'):
+    def __init__(self, name: str, radius: float, color: _ColorType='main', 
+                 shape: Literal['sphere', 'cross'] = 'sphere'):
+        '''
+        shape: shape that will be rendered
+            can be 'sphere' for planetary bodies or 'cross' for points of interest without dimension
+        '''
         super().__init__(name, color)
         self.radius = radius
+        self.shape = shape
 
 
 class Scene():
@@ -213,7 +219,8 @@ class Scene():
             self.time_bounds[1] = epochs[-1]
 
     def add_static_body(self, x: float, y: float, z: float, radius: float=6e6, 
-                        color: _ColorType=(1,1,1), name: str="Central Body") -> None:
+                        color: _ColorType=(1,1,1), name: str="Central Body", 
+                        shape: Literal['sphere', 'cross']='sphere') -> None:
         ''' 
         Adds a static body (without trajectory) to the scene. Usefull for central bodies
         in a body-centric reference frame.
@@ -227,17 +234,20 @@ class Scene():
             Color of the body. Can be a tuple of RGB values or a identifies a 
             color in the color palette.
             Default colors are 'main', 'accent', 'bg', 'blue', 'green', 'red', 'white'
+        shape: shape that will be rendered
+            can be 'sphere' for planetary bodies or 'cross' for points of interest without dimension
         '''
-        body = Body(name, radius * self.scale_factor, color)
+        body = Body(name, radius * self.scale_factor, color, shape)
         body.set_trajectory(np.zeros(1), np.array([[x, z, -y]]) * self.scale_factor)
         self.bodies.append(body)
 
     def add_moving_body(self, epochs: np.ndarray, r: np.ndarray, radius: float=6e6, 
-                        color: _ColorType=(1,1,1), name: str="Central Body") -> None:
+                        color: _ColorType=(1,1,1), name: str="Central Body", 
+                        shape: Literal['sphere', 'cross']='sphere') -> None:
         '''
         Similar to add_static_body, but instear of a single position, a trajectory is provided
         '''
-        body = Body(name, radius * self.scale_factor, color)
+        body = Body(name, radius * self.scale_factor, color, shape)
         render_space_positions = r[:,(0,2,1)] * np.array([1,1,-1])[np.newaxis,:] * self.scale_factor
         body.set_trajectory(epochs, render_space_positions)
         self.bodies.append(body)

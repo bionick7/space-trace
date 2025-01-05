@@ -22,6 +22,9 @@ scene.add_trajectory(epochs, states_normalized[:,:3], name='Orbit', color='green
 # Earth is at 0, 0
 scene.add_static_body(0, 0, 0, radius=6.7/384, name='Earth', color='blue')
 
+scene.add_static_body(0.8491, 0, 0, radius=0.03, name='L1', color='white', shape='cross')
+scene.add_static_body(1.1678, 0, 0, radius=0.03, name='L2', color='white', shape='cross')
+
 # Trajectory of the moon in inertial coordinates in the CR3BP
 moon_path = np.array([np.cos(epochs), np.sin(epochs), np.zeros_like(epochs)]).T
 
