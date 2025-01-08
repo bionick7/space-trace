@@ -32,6 +32,12 @@ class DrawApplication():
     camera_state: str
         Current state of camera manipulation.
         Can be 'rotating', 'dragging_vertical' or 'dragging_horizontal'.
+    arrowhead_scaling_cap: float
+        Above this length (in draw space), arrow length will not affect arrowhead size
+    arrowhead_height_ratio: float
+        Ratio between arrowhead heigth and arrow length
+    arrowhead_radius_ratio: float
+        Ratio between arrowhead radius and arrow length
     '''
 
     def __init__(self, scene: Scene, *args, **kwargs):
@@ -71,6 +77,9 @@ class DrawApplication():
         self.time_bounds = [0, 0]
         self.current_time = 0
 
+        self.arrowhead_scaling_cap = 1
+        self.arrowhead_radius_ratio = 0.05
+        self.arrowhead_height_ratio = 0.2
 
         # internal state keeping
         self._traj_shader = None
@@ -232,18 +241,18 @@ class DrawApplication():
         
         # Establish local coordinate system
         z = np.array([v.x, v.y, v.z]) / rl.vector3_length(v)
-        x_start = np.array([1,0,0]) if v.x > 0.5 else np.array([0,1,0])
+        x_start = np.array([1,0,0]) if v.x < 0.5 else np.array([0,1,0])
         x = (x_start - z * np.dot(x_start, z))
         x /= np.linalg.norm(x)
         y = np.cross(z, x)
 
-        ARROW_HEAD_RADIUS = 0.05 * min(rl.vector3_length(v), 1)
-        ARROW_HEAD_HEIGHT = 0.2 * min(rl.vector3_length(v), 1)
+        arrow_head_radius = self.arrowhead_radius_ratio * min(rl.vector3_length(v), self.arrowhead_scaling_cap)
+        arrow_head_height = self.arrowhead_height_ratio * min(rl.vector3_length(v), self.arrowhead_scaling_cap)
 
         angles = np.linspace(0, 2*np.pi, 17)
-        vectors = (np.outer(np.cos(angles), x) + np.outer(np.sin(angles), y)) * ARROW_HEAD_RADIUS - z[np.newaxis,:] * ARROW_HEAD_HEIGHT
+        vectors = (np.outer(np.cos(angles), x) + np.outer(np.sin(angles), y)) * arrow_head_radius - z[np.newaxis,:] * arrow_head_height
         tip = rl.vector3_add(origin, v)
-        root = rl.vector3_subtract(tip, rl.Vector3(*z* ARROW_HEAD_HEIGHT))
+        root = rl.vector3_subtract(tip, rl.Vector3(*z* arrow_head_height))
         for i in range(16):
             v1 = rl.Vector3(*vectors[i])
             v2 = rl.Vector3(*vectors[i + 1])

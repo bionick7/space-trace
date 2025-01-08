@@ -15,19 +15,21 @@ DEFAULT_FRAME_NAME = 'Default Frame'
 # COLOR HANDLING
 # ==============
 
-def hex_to_color(hex: int) -> tuple[float, float, float]:
+def __hex_to_color(hex: int) -> tuple[float, float, float]:
     return (
         ((hex >> 16) & 0xFF) / 255,
         ((hex >> 8) & 0xFF) / 255, 
         (hex & 0xFF) / 255
     )
+
+# Preload in hidden global scope
 __palette = {}
-__palette['bg'] = hex_to_color(0x12141c)
-__palette['blue'] = hex_to_color(0x454e7e)
-__palette['green'] = hex_to_color(0x4Fc76C)
-__palette['red'] = hex_to_color(0xFF5155)
-__palette['white'] = hex_to_color(0xfaf7d5)
-__palette['gray'] = hex_to_color(0x735e4c)
+__palette['bg'] = __hex_to_color(0x12141c)
+__palette['blue'] = __hex_to_color(0x454e7e)
+__palette['green'] = __hex_to_color(0x4Fc76C)
+__palette['red'] = __hex_to_color(0xFF5155)
+__palette['white'] = __hex_to_color(0xfaf7d5)
+__palette['gray'] = __hex_to_color(0x735e4c)
 __palette['main'] = __palette['white']
 __palette['accent'] = __palette['blue']
 __palette['grey'] = __palette['gray']
@@ -121,30 +123,56 @@ class SceneEntity():
         return self._get_property(self.positions, time)
 
 
-class Transform(SceneEntity):
+class TransformShape(SceneEntity):
     ''' 
-    The main reference frame in the scene.
+    Reference frame, represented by 3 orthogonal arrows
     By default, the identiy transform is always in the scene
     '''
     def __init__(self, epochs: np.ndarray, origins: np.ndarray, bases: np.ndarray, 
-                 name: str='Transform', color: _ColorType='main', draw_space: float=False,
+                 name: str="Transform", color: _ColorType='main', draw_space: bool=False,
                  axis_colors: Optional[tuple[_ColorType, _ColorType, _ColorType]]=None):
         '''
-        TODO
+        Initializes a transform entity
+        epochs: np.ndarray (N,)
+            Time values for each state
+        origins: np.ndarray (N, 3)
+            Origin for each epoch, where the transform is drawn from
+        bases: np.ndarray (N, 3, 3)
+            Array of 3x3 matrices, designating orientation and scale for each epoch
+        name: str
+            Identifier used in the UI. Should be unique
+        color: tuple[float, float, float] or str
+            Color of the trajectory. Can be a tuple of RGB values or a identifies a 
+            color in the color palette.
+            Default colors are 'main', 'accent', 'bg', 'blue', 'green', 'red', 'white'
+        draw_space: bool
+            If true, the coordinates are specified in 'draw space' and therefore not 
+            affected by the scene's scale factor
+        axis_colors: Optional[tuple[_ColorType, _ColorType, _ColorType]]
+            axis colors
         '''
         super().__init__(name, color)
         N = len(epochs)
-        if epochs.ndim != 1:
-            raise ValueError("epochs must be 1-dimensional")
-        if origins.shape != (N, 3):
-            raise ValueError("Shape mismatch: origins shape must be 3 x N, where N is the size of epochs")
-        if bases.shape != (N, 3, 3):
-            raise ValueError("Shape mismatch: bases must be 3 x N, where N is the size of epochs")
+        
+        if origins.shape == (N, 3):
+            self.positions = _transform_vectors_to_draw_space(origins)
+        elif origins.shape == (3,):
+            self.positions = _transform_vectors_to_draw_space(np.repeat(origins[np.newaxis,:], N, axis=0))
+        else:
+            raise ValueError("origins must be of shape (N, 3) or (3,), where N is the epoch length")
+        
+        self.bases = np.zeros((N, 3, 3))
+        if bases.shape == (N, 3, 3):
+            for i in range(3):
+                self.bases[:,:,i] = _transform_vectors_to_draw_space(bases[:,:,i])
+        elif bases.shape == (3, 3):
+            for i in range(3):
+                self.bases[:,:,i] = _transform_vectors_to_draw_space(bases[:,i])
+        else:
+            raise ValueError("bases must be of shape (N, 3, 3) or (3, 3), where N is the epoch length")
+        
         self.epochs = epochs
         self.positions = _transform_vectors_to_draw_space(origins)
-        self.bases = np.zeros_like(bases)
-        for i in range(3):
-            self.bases[:,:,i] = _transform_vectors_to_draw_space(bases[:,:,i])
 
         self.draw_space = draw_space
         self.axis_colors = axis_colors
@@ -165,7 +193,7 @@ class Transform(SceneEntity):
             color in the color palette.
             Default colors are 'main', 'accent', 'bg', 'blue', 'green', 'red', 'white'
         '''
-        return Transform(np.zeros(1), origin[np.newaxis,:], M[np.newaxis,:,:], **kwargs)
+        return TransformShape(np.zeros(1), origin[np.newaxis,:], M[np.newaxis,:,:], **kwargs)
 
     def get_x_color(self) -> Color:
         if self.axis_colors is None:
@@ -184,25 +212,46 @@ class Transform(SceneEntity):
 
 
 
-class Vector(SceneEntity):
+class VectorShape(SceneEntity):
     def __init__(self, epochs: np.ndarray, origins: np.ndarray, vectors: np.ndarray, 
-                 name: str, color: _ColorType='main', draw_space: float=False):
+                 name: str="Vector", color: _ColorType='main', draw_space: float=False):
         '''
-        TODO
+        Initializes a transform entity
+        epochs: np.ndarray (N,)
+            Time values for each state
+        origins: np.ndarray (N, 3)
+            Origin for each epoch, where the transform is drawn from
+        vectors: np.ndarray (N, 3)
+            vector (direction and magnitude) for each epoch
+        name: str
+            Identifier used in the UI. Should be unique
+        color: tuple[float, float, float] or str
+            Color of the trajectory. Can be a tuple of RGB values or a identifies a 
+            color in the color palette.
+            Default colors are 'main', 'accent', 'bg', 'blue', 'green', 'red', 'white'
+        draw_space: bool
+            If true, the coordinates are specified in 'draw space' and therefore not 
+            affected by the scene's scale factor
+        axis_colors: Optional[tuple[_ColorType, _ColorType, _ColorType]]
+            axis colors
         '''
         super().__init__(name, color)
         N = len(epochs)        
-        if len(origins) == len(vectors) == N:
+        
+        if origins.shape == (N, 3):
             self.positions = _transform_vectors_to_draw_space(origins)
-            self.vectors = _transform_vectors_to_draw_space(vectors)
-        elif origins.shape == (N, 3) and vectors.shape == (3,):
-            self.positions = _transform_vectors_to_draw_space(origins)
-            self.vectors = _transform_vectors_to_draw_space(np.hstack(self.positions[np.newaxis,:], N))
-        elif vectors.shape == (N, 3) and origins.shape == (3,):
-            self.positions = _transform_vectors_to_draw_space(np.hstack(self.positions[np.newaxis,:], N))
-            self.vectors = _transform_vectors_to_draw_space(vectors)
+        elif origins.shape == (3,):
+            self.positions = _transform_vectors_to_draw_space(np.repeat(origins[np.newaxis,:], N, axis=0))
         else:
-            raise ValueError("Shape mismatch")
+            raise ValueError("origins must be of shape (N, 3) or (3,), where N is the epoch length")
+        
+        if vectors.shape == (N, 3):
+            self.vectors = _transform_vectors_to_draw_space(vectors)
+        elif vectors.shape == (3,):
+            self.vectors = _transform_vectors_to_draw_space(np.repeat(vectors[np.newaxis,:], N, axis=0))
+        else:
+            raise ValueError("directions must be of shape (N, 3) or (3,), where N is the epoch length")
+        
         self.epochs = epochs
         self.draw_space = draw_space
 
@@ -226,7 +275,7 @@ class Vector(SceneEntity):
             color in the color palette.
             Default colors are 'main', 'accent', 'bg', 'blue', 'green', 'red', 'white'
         '''
-        return Vector(np.zeros(1), np.array([[x, y, z]]), np.array([[vx, vy, vz]]), **kwargs)
+        return VectorShape(np.zeros(1), np.array([[x, y, z]]), np.array([[vx, vy, vz]]), **kwargs)
 
 
 class Trajectory(SceneEntity):
@@ -236,7 +285,7 @@ class Trajectory(SceneEntity):
     This is mostly to access the metadata and to support get_position
     '''
     def __init__(self, epochs: np.ndarray, states: np.ndarray, 
-                 name: str, color: _ColorType='main'):
+                 name: str='Trajectory', color: _ColorType='main'):
         '''
         Adds a trajectory to the scene. The trajectory is a sequence of states in space over time.
         epochs: np.ndarray (N,)
@@ -284,7 +333,7 @@ class Body(SceneEntity):
     Represented by a colored sphere of a certain radius.
     Mostly represents a celestial body.
     '''
-    def __init__(self, epochs: np.ndarray, states: np.ndarray, name: str, radius: float, 
+    def __init__(self, epochs: np.ndarray, states: np.ndarray, radius: float, name: str="Body", 
                  color: _ColorType='main', shape: Literal['sphere', 'cross'] = 'sphere'):
         ''' 
         Adds a static body (without trajectory) to the scene. Usefull for central bodies
@@ -355,7 +404,7 @@ class Scene():
         self.trajectory_patches = []
         self.time_bounds = [np.inf, -np.inf]
         self.lookup = {}
-        origin_frame = Transform.fixed(np.zeros(3), np.eye(3) * 100, name=DEFAULT_FRAME_NAME, 
+        origin_frame = TransformShape.fixed(np.zeros(3), np.eye(3) * 100, name=DEFAULT_FRAME_NAME, 
                                        draw_space=True, axis_colors=('red', 'green', 'blue'))
         self.transforms.append(origin_frame)
 
@@ -367,7 +416,7 @@ class Scene():
 
     def add(self, entity: SceneEntity) -> None:
         '''
-        Adds scene entity to the scene. Scene entities can be Trajectory, Body, Vector or Transform
+        Adds scene entity to the scene. Scene entities can be Trajectory, Body, VectorShape or TransformShape
         '''
         entity_name_suffix_index = 0
         entity_original_name = entity.name
@@ -381,9 +430,9 @@ class Scene():
             self.trajectories.append(entity)
         elif isinstance(entity, Body):
             self.bodies.append(entity)
-        elif isinstance(entity, Vector):
+        elif isinstance(entity, VectorShape):
             self.vectors.append(entity)
-        elif isinstance(entity, Transform):
+        elif isinstance(entity, TransformShape):
             self.transforms.append(entity)
         else:
             raise TypeError(f"Type not supported: '{type(entity)}'")
@@ -409,7 +458,7 @@ class Scene():
         if len(directions) > 1:
             directions[-1] = directions[-2]
 
-        double_stiched_positions = np.repeat(positions, 2, axis=0)
+        double_stiched_positions = np.repeat(positions, 2, axis=0) * self.scale_factor
         double_stiched_dirs = np.repeat(directions, 2, axis=0)
         double_stiched_time = np.repeat(epochs, 2, axis=0)
 

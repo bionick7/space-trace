@@ -22,7 +22,7 @@ scene = spacetrace.Scene(scale_factor=1)
 scene.add(spacetrace.Trajectory(epochs, states_inertial[:,:3], name='Orbit-Inertial', color='red'))
 scene.add(spacetrace.Trajectory(epochs, states_sydonic[:,:3], name='Orbit', color='green'))
 # Angular momentum in inertial frame, to demonstrate Vector
-scene.add(spacetrace.Vector(epochs, states_sydonic[:,:3], angular_momentum, name='Angular Momentum', color='grey'))
+scene.add(spacetrace.VectorShape(epochs, states_sydonic[:,:3], angular_momentum, name='Angular Momentum', color='grey'))
 
 # Earth is at 0, 0
 scene.add(spacetrace.Body.fixed(0, 0, 0, radius=6.7/384, name='Earth', color='blue'))
@@ -39,6 +39,6 @@ scene.add(spacetrace.Trajectory(epochs, moon_path, name='Moon-Inertial-Trajector
 scene.add(spacetrace.Body.fixed(1, 0, 0, radius=1.6/384, name='Moon', color='white'))
 
 # Sydonic to inertial transform
-scene.add(spacetrace.Transform(epochs, np.zeros((len(epochs), 3)), transforms*.4, "Sydonic frame"))
+scene.add(spacetrace.TransformShape(epochs, np.zeros((len(epochs), 3)), transforms*.4, "Sydonic frame"))
 
 spacetrace.show_scene(scene, focus='Orbit')

@@ -53,8 +53,11 @@ For more details see the documentation within the source files (`spacetrace/*`) 
 - Updated raylib requirement to only support version 5.5 due to recent breaking api change
 - Clamped camera pitch to -pi/2 ... pi/2, preventing rendering glitch
 
-### 0.1.3
+### 0.2.0
 - Fixed bug of add_trajectory changing the output
+- Added transforms and vectors
+- BREAKING: User is now responsible for object initialization, i.e.
+  `add_xxx(...)` notation is replaced with more flexible `add(Xxx(...))`
 
 ## License
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
