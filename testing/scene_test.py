@@ -1,6 +1,6 @@
 import unittest
 import numpy as np
-from spacetrace.scene import Scene, Trajectory, Body, ReferenceFrame
+from spacetrace.scene import Scene, Trajectory, Body, Transform
 
 '''
     Far from rigorous, as mosts testing is done visually.
@@ -39,7 +39,7 @@ class TestScene(unittest.TestCase):
             self.assertAlmostEqual(-z, rand_val * self.scene.scale_factor)
 
     def test_reference_frame(self):
-        self.assertIsInstance(self.scene.reference_frame, ReferenceFrame)
+        self.assertIsInstance(self.scene.reference_frame, Transform)
         self.assertEqual(self.scene.reference_frame.name, "Default Frame")
 
     def test_time_bounds(self):

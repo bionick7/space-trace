@@ -1,4 +1,4 @@
 from .main import DrawApplication, show_interactable, show_scene
-from .scene import Scene
+from .scene import *
 
-__all__ = ["DrawApplication", "Scene", "show_scene", "show_interactable"]
+__all__ = [x for x in dir() if not x.startswith("_")]

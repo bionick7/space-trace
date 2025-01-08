@@ -47,7 +47,16 @@ def circular_restriced_three_body_problem(initial_state, mu):
     return states, epochs
 
 
-def generate_3bp_data(mode: Literal['normalized', 'inertial']):
+def get_sydonic_to_inertial_reference_frame(epochs):
+    X, Y, Z = np.eye(3)
+    transforms = np.zeros((len(epochs), 3, 3))
+    transforms[:,:,0] =  np.outer(np.cos(epochs), X) + np.outer(np.sin(epochs), Y)
+    transforms[:,:,1] = -np.outer(np.sin(epochs), X) + np.outer(np.cos(epochs), Y)
+    transforms[:,:,2] =  Z
+    return transforms
+
+
+def generate_3bp_data(mode: Literal['sydonic', 'inertial']):
     L1 = 0.8490659859092115
 
     m_1 = 5.974e24  # kg
@@ -57,13 +66,11 @@ def generate_3bp_data(mode: Literal['normalized', 'inertial']):
     initial_state = np.array([L1, 0, .01, 0, 0, 0])
 
     states, epochs = circular_restriced_three_body_problem(initial_state, mu)
-    transformed_states = np.zeros_like(states)
     if mode == 'inertial':
-        transformed_states[:, 0] = np.cos(epochs) * states[:, 0] - np.sin(epochs) * states[:, 1]
-        transformed_states[:, 1] = np.sin(epochs) * states[:, 0] + np.cos(epochs) * states[:, 1]
-        transformed_states[:, 2] = states[:, 2]
-        transformed_states[:, 3] = np.cos(epochs) * states[:, 3] - np.sin(epochs) * states[:, 4]
-        transformed_states[:, 4] = np.sin(epochs) * states[:, 3] + np.cos(epochs) * states[:, 4]
-        transformed_states[:, 5] = states[:, 5]
+        transformed_states = np.zeros_like(states)
+        transforms = get_sydonic_to_inertial_reference_frame(epochs)
+        for i in range(len(epochs)):
+            transformed_states[i,:3] = transforms[i] @ states[i,:3]
+            transformed_states[i,3:] = transforms[i] @ states[i,3:]
         return transformed_states, epochs
     return states, epochs

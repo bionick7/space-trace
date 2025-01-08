@@ -57,7 +57,7 @@ class DrawApplication():
         self.pitch = kwargs.get("camera_pitch", 0.5)
         self.yaw = kwargs.get("camera_yaw", 0)
         self.draw_entity_list = kwargs.get("draw_entity_list", True)
-        self.scene.reference_frame.is_visible = kwargs.get("show_axes", True)
+        self.scene.transforms[0].is_visible = kwargs.get("show_axes", True)
 
         camera_dir = rl.Vector3()
         camera_dir.x = np.sin(self.yaw) * np.cos(self.pitch)
@@ -97,11 +97,10 @@ class DrawApplication():
         ''' Updates rotation. Maintains target while updating yaw and pitch trhough mouse input. '''
 
         # Follow focus if applicable
-        if self.focus != DEFAULT_FRAME_NAME:
-            for entity in self.scene.bodies + self.scene.trajectories:
-                if entity.name == self.focus:
-                    pos = entity.get_position(self.current_time)
-                    self.camera.target = rl.Vector3(pos[0], pos[1], pos[2])
+        for entity in self.scene.entities:
+            if entity.name == self.focus and self.focus != DEFAULT_FRAME_NAME:
+                pos = entity.get_position(self.current_time) * self.scene.scale_factor
+                self.camera.target = rl.Vector3(pos[0], pos[1], pos[2])
 
         # Get Camera state
         self._camera_state = None
@@ -228,6 +227,55 @@ class DrawApplication():
 
         rl.end_shader_mode()
 
+    def _draw_vector(self, origin: rl.Vector3, v: rl.Vector3, color: rl.Color):
+        rl.draw_line_3d(origin, rl.vector3_add(origin, v), color)
+        
+        # Establish local coordinate system
+        z = np.array([v.x, v.y, v.z]) / rl.vector3_length(v)
+        x_start = np.array([1,0,0]) if v.x > 0.5 else np.array([0,1,0])
+        x = (x_start - z * np.dot(x_start, z))
+        x /= np.linalg.norm(x)
+        y = np.cross(z, x)
+
+        ARROW_HEAD_RADIUS = 0.05 * min(rl.vector3_length(v), 1)
+        ARROW_HEAD_HEIGHT = 0.2 * min(rl.vector3_length(v), 1)
+
+        angles = np.linspace(0, 2*np.pi, 17)
+        vectors = (np.outer(np.cos(angles), x) + np.outer(np.sin(angles), y)) * ARROW_HEAD_RADIUS - z[np.newaxis,:] * ARROW_HEAD_HEIGHT
+        tip = rl.vector3_add(origin, v)
+        root = rl.vector3_subtract(tip, rl.Vector3(*z* ARROW_HEAD_HEIGHT))
+        for i in range(16):
+            v1 = rl.Vector3(*vectors[i])
+            v2 = rl.Vector3(*vectors[i + 1])
+            rl.draw_triangle_3d(tip, rl.vector3_add(tip, v1), rl.vector3_add(tip, v2), color)
+            rl.draw_triangle_3d(root, rl.vector3_add(tip, v2), rl.vector3_add(tip, v1), color)
+            #rl.draw_line_3d(tip, rl.vector3_add(tip, v1), color)
+
+    def _draw_gizmos(self):
+        for vector in self.scene.vectors:
+            if not vector.is_visible:
+                continue
+            if vector.draw_space:
+                o = vector.get_position(self.current_time)
+                v = vector.get_vector(self.current_time)
+            else:
+                o = vector.get_position(self.current_time) * self.scene.scale_factor
+                v = vector.get_vector(self.current_time) * self.scene.scale_factor
+            self._draw_vector(rl.Vector3(*o), rl.Vector3(*v), vector.color.as_rl_color())
+        
+        for transform in self.scene.transforms:
+            if not transform.is_visible:
+                continue
+            if transform.draw_space:
+                o = transform.get_position(self.current_time)
+                basis = transform.get_basis(self.current_time)
+            else:
+                o = transform.get_position(self.current_time) * self.scene.scale_factor
+                basis = transform.get_basis(self.current_time) * self.scene.scale_factor
+            self._draw_vector(rl.Vector3(*o), rl.Vector3(*basis[:,0]), transform.get_x_color().as_rl_color())
+            self._draw_vector(rl.Vector3(*o), rl.Vector3(*basis[:,1]), transform.get_y_color().as_rl_color())
+            self._draw_vector(rl.Vector3(*o), rl.Vector3(*basis[:,2]), transform.get_z_color().as_rl_color())
+
     def _draw_axis_cross(self, point: rl.Vector3, extend: float, rl_color: rl.Color):
         rl.draw_line_3d(rl.vector3_add(point, rl.Vector3(-extend,0,0)), rl.vector3_add(point, rl.Vector3(extend,0,0)), rl_color)
         rl.draw_line_3d(rl.vector3_add(point, rl.Vector3(0,-extend,0)), rl.vector3_add(point, rl.Vector3(0,extend,0)), rl_color)
@@ -240,7 +288,7 @@ class DrawApplication():
         for body in self.scene.bodies:
             if not body.is_visible:
                 continue
-            r = body.get_position(self.current_time)
+            r = body.get_position(self.current_time) * self.scene.scale_factor
             pos_3d = rl.Vector3(r[0], r[1], r[2])
             pos_2d = rl.Vector3(r[0], 0, r[2])
             color = body.color.as_rl_color()
@@ -303,16 +351,7 @@ class DrawApplication():
         '''
             Draws the primary reference frame and the camera target if no focus is set.
         '''
-        if self.scene.reference_frame.is_visible:
-            extend = self.camera_distance * 100
-            red, green, blue = Color('red').as_rl_color(), Color('green').as_rl_color(), Color('blue').as_rl_color()
-            rl.draw_line_3d(rl.vector3_zero(), rl.Vector3( extend, 0, 0), rl.color_tint(red,   rl.Color(120,120,120,255)))
-            rl.draw_line_3d(rl.vector3_zero(), rl.Vector3(-extend, 0, 0), rl.color_tint(red,   rl.Color(60, 60, 60,255)))
-            rl.draw_line_3d(rl.vector3_zero(), rl.Vector3(0, 0, -extend), rl.color_tint(green, rl.Color(120,120,120,255)))
-            rl.draw_line_3d(rl.vector3_zero(), rl.Vector3(0, 0,  extend), rl.color_tint(green, rl.Color(60, 60, 60,255)))
-            rl.draw_line_3d(rl.vector3_zero(), rl.Vector3(0,  extend, 0), rl.color_tint(blue,  rl.Color(120,120,120,255)))
-            rl.draw_line_3d(rl.vector3_zero(), rl.Vector3(0, -extend, 0), rl.color_tint(blue,  rl.Color(60, 60, 60,255)))
-
+        if self.scene.transforms[0].is_visible:
             for r in [1, 2, 5, 10, 20, 50]:
                 rl.draw_circle_3d(rl.Vector3(0,0,0), r, rl.Vector3(1,0,0), 90, rl.GRAY)
 
@@ -335,6 +374,7 @@ class DrawApplication():
         self._draw_grid()
         self._draw_trajectories()
         self._draw_bodies()
+        self._draw_gizmos()
         rl.end_mode_3d()
 
         self._draw_time_bar()
