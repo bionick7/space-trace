@@ -61,7 +61,8 @@ class Color():
                  palette: Callable[[_ColorIDLiteral], tuple[float, float, float]]=default_palette):
         if isinstance(c, tuple):
             self.rgb = c
-        self.rgb = palette(c)
+        else:
+            self.rgb = palette(c)
 
     def as_rl_color(self) -> rl.Color:
         r, g, b = self.rgb
@@ -121,6 +122,10 @@ class SceneEntity():
 
     def get_position(self, time: float):
         return self._get_property(self.positions, time)
+    
+    def on_setup(self, scene, draw_app):
+        ''' Gets called when the window is initialized '''
+        pass
 
 
 class TransformShape(SceneEntity):
@@ -172,15 +177,14 @@ class TransformShape(SceneEntity):
             raise ValueError("bases must be of shape (N, 3, 3) or (3, 3), where N is the epoch length")
         
         self.epochs = epochs
-        self.positions = _transform_vectors_to_draw_space(origins)
-
         self.draw_space = draw_space
         self.axis_colors = axis_colors
 
     def get_basis(self, time: float):
         return self._get_property(self.bases, time)
     
-    def fixed(origin: np.ndarray, M: np.ndarray, **kwargs):
+    @classmethod
+    def fixed(cls, origin: np.ndarray, M: np.ndarray, *args, **kwargs):
         ''' 
         Adds a transform (without trajectory) to the scene. Usefull to display
         rotations and 
@@ -193,7 +197,7 @@ class TransformShape(SceneEntity):
             color in the color palette.
             Default colors are 'main', 'accent', 'bg', 'blue', 'green', 'red', 'white'
         '''
-        return TransformShape(np.zeros(1), origin[np.newaxis,:], M[np.newaxis,:,:], **kwargs)
+        return cls(np.zeros(1), origin[np.newaxis,:], M[np.newaxis,:,:], *args, **kwargs)
 
     def get_x_color(self) -> Color:
         if self.axis_colors is None:
@@ -258,8 +262,8 @@ class VectorShape(SceneEntity):
     def get_vector(self, time: float):
         return self._get_property(self.vectors, time)
 
-    @staticmethod
-    def fixed(x: float, y: float, z: float, vx: float, vy: float, vz: float, **kwargs):
+    @classmethod
+    def fixed(cls, x: float, y: float, z: float, vx: float, vy: float, vz: float, *args, **kwargs):
         ''' 
         Adds a static vector (without trajectory) to the scene.
         x: float
@@ -275,7 +279,7 @@ class VectorShape(SceneEntity):
             color in the color palette.
             Default colors are 'main', 'accent', 'bg', 'blue', 'green', 'red', 'white'
         '''
-        return VectorShape(np.zeros(1), np.array([[x, y, z]]), np.array([[vx, vy, vz]]), **kwargs)
+        return VectorShape(cls, np.zeros(1), np.array([[x, y, z]]), np.array([[vx, vy, vz]]), *args, **kwargs)
 
 
 class Trajectory(SceneEntity):
@@ -316,6 +320,7 @@ class Trajectory(SceneEntity):
             raise ValueError("States should have 3 or 6 columns")
             
         self.epochs = epochs
+        self._scene_index = -1
 
     @property
     def patches(self):
@@ -325,6 +330,10 @@ class Trajectory(SceneEntity):
             start = max(0, i * 2**14 - 1)  # Link up t0.0.0 the previous one
             end = min((i+1) * 2**14, total_length)
             yield self.epochs[start:end], self.positions[start:end], self.velocities
+
+    def on_setup(self, scene, draw_app):
+        for patch in self.patches:
+            scene._add_trajectory_patch(*patch, self._scene_index)
 
 
 class Body(SceneEntity):
@@ -358,8 +367,8 @@ class Body(SceneEntity):
         self.positions = states[:,(0, 2, 1)] * np.array([1,1,-1])[np.newaxis,:]
         self.epochs = epochs
 
-    @staticmethod
-    def fixed(x: float, y: float, z: float, **kwargs):
+    @classmethod
+    def fixed(cls, x: float, y: float, z: float, *args, **kwargs):
         ''' 
         Adds a static body (without trajectory) to the scene. Usefull for central bodies
         in a body-centric reference frame.
@@ -376,7 +385,7 @@ class Body(SceneEntity):
         shape: shape that will be rendered
             can be 'sphere' for planetary bodies or 'cross' for points of interest without dimension
         '''
-        return Body(np.zeros(1), np.array([[x, y, z]]), **kwargs)
+        return cls(np.zeros(1), np.array([[x, y, z]]), *args, **kwargs)
 
 
 class Scene():
@@ -418,15 +427,14 @@ class Scene():
         '''
         Adds scene entity to the scene. Scene entities can be Trajectory, Body, VectorShape or TransformShape
         '''
-        entity_name_suffix_index = 0
+        entity_name_suffix_index = 2
         entity_original_name = entity.name
         while entity.name in [e.name for e in self.entities]:
-            entity.name = entity_original_name + str(entity_name_suffix_index)
+            entity.name = entity_original_name + " " + str(entity_name_suffix_index)
             entity_name_suffix_index += 1
         
         if isinstance(entity, Trajectory):
-            for patch in entity.patches:
-                self._add_trajectory_patch(*patch, len(self.trajectories))
+            entity._scene_index = len(self.trajectories)
             self.trajectories.append(entity)
         elif isinstance(entity, Body):
             self.bodies.append(entity)
@@ -448,7 +456,7 @@ class Scene():
         Helper function for add_trajectory. Handle a lot of the low-level rendering setup
         '''
         if not rl.is_window_ready():
-            _init_raylib_window()
+            raise Exception("Window not initialized, no graphics API exists")
 
         if deltas is None:
             deltas = np.diff(positions, append=positions[-1:], axis=0)
@@ -487,6 +495,10 @@ class Scene():
         rl.rl_disable_vertex_array()
         self.trajectory_patches.append((vao, len(triangle_buffer), trajectory_index))
 
+    def on_setup(self, draw_app):
+        for entity in self.entities:
+            entity.on_setup(self, draw_app)
+
     @property
     def entities(self):
         ''' Generates all entities in the scene '''
@@ -513,10 +525,3 @@ def _create_vb_attribute(array: np.ndarray, index: int):
     rl_raw.rlSetVertexAttribute(index, array.shape[1], GL_FLOAT, False, 0, 0)
     rl_raw.rlEnableVertexAttribute(index)
     return vbo
-
-
-def _init_raylib_window():
-    # Initiialize raylib graphics window
-    rl.set_config_flags(rl.ConfigFlags.FLAG_MSAA_4X_HINT | rl.ConfigFlags.FLAG_WINDOW_RESIZABLE)
-    rl.init_window(DEFAULT_WINDOWN_WIDTH, DEFAULT_WINDOW_HEIGHT, "Space Trace")
-    rl.set_target_fps(60)

@@ -1,6 +1,7 @@
 import unittest
 import numpy as np
 from spacetrace.scene import Scene, Trajectory, Body, TransformShape, VectorShape
+from spacetrace.main import show_interactable
 
 '''
     Far from rigorous, as mosts testing is done visually.
@@ -19,11 +20,13 @@ class TestScene(unittest.TestCase):
 
         self.assertRaises(ValueError, Trajectory, epochs, states[:-1])
         self.assertEqual(len(self.scene.trajectories), 1)
-        self.assertEqual(len(self.scene.trajectory_patches), 2)
-        self.assertEqual(self.scene.trajectory_patches[0][1], (2**14 - 1) * 6)
-        self.assertEqual(self.scene.trajectory_patches[0][2], 0)
-        self.assertEqual(self.scene.trajectory_patches[1][1], 6)
-        self.assertEqual(self.scene.trajectory_patches[1][2], 0)
+        
+        with show_interactable(self.scene) as _:
+            self.assertEqual(len(self.scene.trajectory_patches), 2)
+            self.assertEqual(self.scene.trajectory_patches[0][1], (2**14 - 1) * 6)
+            self.assertEqual(self.scene.trajectory_patches[0][2], 0)
+            self.assertEqual(self.scene.trajectory_patches[1][1], 6)
+            self.assertEqual(self.scene.trajectory_patches[1][2], 0)
 
     def test_vector_setting(self):
         epochs = np.linspace(0, 1, 1000)
@@ -89,3 +92,6 @@ class TestScene(unittest.TestCase):
             max_t = max(max_t, np.max(entity.epochs))
         self.assertEqual(self.scene.time_bounds[0], min_t)
         self.assertEqual(self.scene.time_bounds[1], max_t)
+
+if __name__ == "__main__":
+    unittest.main()

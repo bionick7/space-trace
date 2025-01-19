@@ -21,8 +21,6 @@ scene = spacetrace.Scene(scale_factor=1)
 # Add both trajectories. Distinctive naming is important
 scene.add(spacetrace.Trajectory(epochs, states_inertial[:,:3], name='Orbit-Inertial', color='red'))
 scene.add(spacetrace.Trajectory(epochs, states_sydonic[:,:3], name='Orbit', color='green'))
-# Angular momentum in inertial frame, to demonstrate Vector
-scene.add(spacetrace.VectorShape(epochs, states_sydonic[:,:3], angular_momentum, name='Angular Momentum', color='grey'))
 
 # Earth is at 0, 0
 scene.add(spacetrace.Body.fixed(0, 0, 0, radius=6.7/384, name='Earth', color='blue'))

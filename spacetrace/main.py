@@ -6,6 +6,15 @@ import pyray as rl
 import raylib as rl_raw
 
 
+def _init_raylib_window():
+    # Initiialize raylib graphics window
+    rl.set_config_flags(rl.ConfigFlags.FLAG_MSAA_4X_HINT 
+                      | rl.ConfigFlags.FLAG_WINDOW_RESIZABLE
+                      | rl.ConfigFlags.FLAG_VSYNC_HINT)
+    rl.init_window(DEFAULT_WINDOWN_WIDTH, DEFAULT_WINDOW_HEIGHT, "Space Trace")
+    rl.set_target_fps(60)
+
+
 class DrawApplication():
     '''
     Main class for drawing the scene. Handles the core application loop.
@@ -101,7 +110,7 @@ class DrawApplication():
     @property
     def is_scrolling(self):
         return self._last_scroll_event < 0.2
-
+    
     def update_camera(self):
         ''' Updates rotation. Maintains target while updating yaw and pitch trhough mouse input. '''
 
@@ -167,6 +176,7 @@ class DrawApplication():
         ''' Setup application after the scene has been fully populated. '''
         if not rl.is_window_ready():
             _init_raylib_window()
+        self.scene.on_setup(self)
 
         if np.isfinite(self.scene.time_bounds[0]):
             self.time_bounds = self.scene.time_bounds
@@ -249,10 +259,13 @@ class DrawApplication():
         arrow_head_radius = self.arrowhead_radius_ratio * min(rl.vector3_length(v), self.arrowhead_scaling_cap)
         arrow_head_height = self.arrowhead_height_ratio * min(rl.vector3_length(v), self.arrowhead_scaling_cap)
 
+        # Calculate triangle vertex coordinates
         angles = np.linspace(0, 2*np.pi, 17)
         vectors = (np.outer(np.cos(angles), x) + np.outer(np.sin(angles), y)) * arrow_head_radius - z[np.newaxis,:] * arrow_head_height
         tip = rl.vector3_add(origin, v)
         root = rl.vector3_subtract(tip, rl.Vector3(*z* arrow_head_height))
+
+        # Draw triangles
         for i in range(16):
             v1 = rl.Vector3(*vectors[i])
             v2 = rl.Vector3(*vectors[i + 1])
@@ -297,17 +310,18 @@ class DrawApplication():
         for body in self.scene.bodies:
             if not body.is_visible:
                 continue
-            r = body.get_position(self.current_time) * self.scene.scale_factor
-            pos_3d = rl.Vector3(r[0], r[1], r[2])
-            pos_2d = rl.Vector3(r[0], 0, r[2])
+            pos = body.get_position(self.current_time) * self.scene.scale_factor
+            r = body.radius * self.scene.scale_factor
+            pos_3d = rl.Vector3(pos[0], pos[1], pos[2])
+            pos_2d = rl.Vector3(pos[0], 0, pos[2])
             color = body.color.as_rl_color()
 
-            if r[1] != 0:
+            if pos[1] != 0:
                 rl.draw_line_3d(pos_2d, pos_3d, rl.color_alpha(color, 0.5))
             if body.shape == 'cross':
-                self._draw_axis_cross(pos_3d, body.radius, color)
+                self._draw_axis_cross(pos_3d, r, color)
             else:
-                rl.draw_sphere_ex(pos_3d, body.radius, 32, 64, color)
+                rl.draw_sphere_ex(pos_3d, r, 32, 64, color)
             
     def _draw_time_bar(self):
         '''

@@ -7,7 +7,8 @@ This tool should be used similarly to matplotlib's 3d plotting tool, but optimiz
 as well as drawing large trajectories at a smooth framerate.
 
 <!--![Screenshot 1](/images/img1.png) -->
-![Screenshot 2](/images/img2.png)
+![Screenshot 1](/images/img2.png)
+![Screenshot 2](/images/img3.png)
 
 ## Installation
 Spacetrace is a standard python package available on pypi:
@@ -58,6 +59,10 @@ For more details see the documentation within the source files (`spacetrace/*`) 
 - Added transforms and vectors
 - BREAKING: User is now responsible for object initialization, i.e.
   `add_xxx(...)` notation is replaced with more flexible `add(Xxx(...))`
+
+### 0.2.1
+- Added new example, illustrating usage of transforms
+- Window only pops up when scene is displayed
 
 ## License
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.

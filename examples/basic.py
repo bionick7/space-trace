@@ -11,10 +11,10 @@ rr = np.array([np.cos(thetas), np.sin(thetas), np.zeros_like(thetas)]).T * 7e6
 scene = spacetrace.Scene()
 
 # Add the generated trajectory
-scene.add_trajectory(epochs, rr)
+scene.add(spacetrace.Trajectory(epochs, rr))
 
 # Create a static, blue body at the center, representing Earth
-scene.add_static_body(0, 0, 0, radius=6.7e6, name='Earth', color=(0,0.5,1))
+scene.add(spacetrace.Body.fixed(0, 0, 0, radius=6.7e6, name='Earth', color=(0,0.5,1)))
 
 # Show scene
 spacetrace.show_scene(scene)
