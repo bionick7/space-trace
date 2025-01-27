@@ -4,6 +4,7 @@ from spacetrace.scene import *
 import numpy as np
 import pyray as rl
 import raylib as rl_raw
+import os.path
 
 
 def _init_raylib_window():
@@ -12,8 +13,7 @@ def _init_raylib_window():
                       | rl.ConfigFlags.FLAG_WINDOW_RESIZABLE
                       | rl.ConfigFlags.FLAG_VSYNC_HINT)
     rl.init_window(DEFAULT_WINDOWN_WIDTH, DEFAULT_WINDOW_HEIGHT, "Space Trace")
-    rl.set_target_fps(60)
-
+    rl.set_target_fps(rl.get_monitor_refresh_rate(0))
 
 class DrawApplication():
     '''
@@ -23,8 +23,8 @@ class DrawApplication():
     -----------
     scene: spacetrace.scene.Scene
         Contains all the data and is populated by the user.
-    focus: str
-        Name of the camera focuses on. Defaults to `DEFAULT_FRAME_NAME`.
+    focus: uint-64
+        UUID of the camera focuses on. Defaults to `DEFAULT_FRAME_UUID`.
     camera_distance: float
     camera_pitch: float
     camera_yaw: float
@@ -49,6 +49,9 @@ class DrawApplication():
         Ratio between arrowhead radius and arrow length
     '''
 
+    text_size = 24
+    timebar_height = 20
+
     def __init__(self, scene: Scene, *args, **kwargs):
         '''
         scene: the scene to be drawn (c.f. spacetrace.scene.Scene)
@@ -66,8 +69,12 @@ class DrawApplication():
                 Field of view of the camera in degrees.
         '''
         self.scene = scene
+        self.main_font = None
         
-        self.focus = kwargs.get("focus", DEFAULT_FRAME_NAME)
+        if 'focus' in kwargs:
+            self.focus = self.scene.get_entity(kwargs['focus'])
+        else: 
+            self.focus = DEFAULT_FRAME_UUID
         self.camera_distance = kwargs.get("camera_distance", 5.0)
         self.pitch = kwargs.get("camera_pitch", 0.5)
         self.yaw = kwargs.get("camera_yaw", 0)
@@ -116,7 +123,7 @@ class DrawApplication():
 
         # Follow focus if applicable
         for entity in self.scene.entities:
-            if entity.name == self.focus and self.focus != DEFAULT_FRAME_NAME:
+            if entity.uuid == self.focus and self.focus != DEFAULT_FRAME_UUID:
                 pos = entity.get_position(self.current_time) * self.scene.scale_factor
                 self.camera.target = rl.Vector3(pos[0], pos[1], pos[2])
 
@@ -176,6 +183,8 @@ class DrawApplication():
         ''' Setup application after the scene has been fully populated. '''
         if not rl.is_window_ready():
             _init_raylib_window()
+        main_font_path = os.path.join(os.path.dirname(__file__), 'resources', 'SpaceMono-Regular.ttf')
+        self.main_font = rl.load_font_ex(main_font_path, self.text_size, ffi.NULL, 0)
         self.scene.on_setup(self)
 
         if np.isfinite(self.scene.time_bounds[0]):
@@ -196,24 +205,22 @@ class DrawApplication():
         rl.unload_shader(self._traj_shader)
         rl.close_window()
 
-    def set_focus(self, body_name: str|None):
+    def set_focus(self, body_uuid: np.uint64|None):
         ''' 
             Sets the camera focus to a specific body.
             The camera will follow the body through time.
             If focus is 'None' or 'DEFAULT_FRAME_NAME', 
             the camera will not follow anything.
         '''
-        if body_name is None:
-            body_name = DEFAULT_FRAME_NAME
-        self.focus = body_name
+        if body_uuid is None:
+            body_uuid = DEFAULT_FRAME_UUID
+        self.focus = body_uuid
 
     def _draw_trajectories(self):
         '''
             Draws all the trajectories through some lower-level graphics shenanigans.
         '''
-        
-        NULL = ffi.NULL
-        
+                
         rl.begin_shader_mode(self._traj_shader)
         #rl.draw_cube(rl.vector3_zero(), 1, 1, 1, rl.BLUE)
 
@@ -241,7 +248,7 @@ class DrawApplication():
                                 rl.ShaderUniformDataType.SHADER_UNIFORM_VEC4)
 
             rl.rl_enable_vertex_array(vao)
-            rl_raw.rlDrawVertexArrayElements(0, elems, NULL)
+            rl_raw.rlDrawVertexArrayElements(0, elems, ffi.NULL)
             rl.rl_disable_vertex_array()
 
         rl.end_shader_mode()
@@ -330,14 +337,13 @@ class DrawApplication():
         if self.time_bounds[1] <= self.time_bounds[0]:
             return
         
-        TIMEBAR_HIGHT = 20
         #rl.draw_rectangle(0, rl.get_screen_height() - TIMEBAR_HIGHT, rl.get_screen_width(), TIMEBAR_HIGHT, rl.GRAY)
         t = (self.current_time - self.time_bounds[0]) / (self.time_bounds[1] - self.time_bounds[0])
-        rl.draw_rectangle(0, rl.get_screen_height() - TIMEBAR_HIGHT, int(t * rl.get_screen_width()), TIMEBAR_HIGHT, 
+        rl.draw_rectangle(0, rl.get_screen_height() - self.timebar_height, int(t * rl.get_screen_width()), self.timebar_height, 
                           Color('main').as_rl_color())
 
         mouse_pos = rl.get_mouse_position()
-        slider_hover = mouse_pos.y > rl.get_screen_height() - TIMEBAR_HIGHT
+        slider_hover = mouse_pos.y > rl.get_screen_height() - self.timebar_height
         if rl.is_mouse_button_pressed(rl.MouseButton.MOUSE_BUTTON_LEFT) and slider_hover:
             self._time_setting = True
         if rl.is_mouse_button_up(rl.MouseButton.MOUSE_BUTTON_LEFT):
@@ -345,30 +351,67 @@ class DrawApplication():
         if self._time_setting:
             self.current_time = self.time_bounds[0] + (mouse_pos.x / rl.get_screen_width()) * (self.time_bounds[1] - self.time_bounds[0])
 
-    def _draw_list_element(self, e: SceneEntity, i: int):
+    def _draw_list_element(self, e: SceneEntity, index: int, indent: int):
         '''
             Draws a single element in the list of entities.
         '''
-        TEXT_SIZE = 20
-        x0 = 2
-        y0 = 2 + TEXT_SIZE * i
+        x0 = 2 + 5 * indent
+        y0 = 2 + self.text_size * index
+        display_name = e.name.split("/")[-1]
+        if isinstance(e, Group):
+            text_foling = ("> " if e.folded else "v ")
+        else:
+            text_foling = ""
+        
+        text_focus = ("x " if e.uuid == self.focus else "  ")
+        text_visible = ("o " if e.is_visible else "- ")
+
+        texts = [text_foling, text_focus, text_visible, display_name]
+
         color = Color('main').as_rl_color() if e.is_visible else Color('grey').as_rl_color()
-        text = ("> " if e.name == self.focus else "  ") + e.name
-        rl.draw_text(text, x0, y0, TEXT_SIZE, color)
-        width = rl.measure_text(text, TEXT_SIZE)
-        hover = rl.check_collision_point_rec(rl.get_mouse_position(), rl.Rectangle(x0, y0, width, TEXT_SIZE))
+
+        if self.main_font is None:
+            rl.draw_text("".join(texts), x0, y0, self.text_size, color)
+            widths = [rl.measure_text(text, self.text_size) for text in texts]
+        else:
+            rl.draw_text_ex(self.main_font, "".join(texts), rl.Vector2(x0, y0), self.text_size, 1, color)
+            widths = [rl.measure_text_ex(self.main_font, text, self.text_size, 1).x for text in texts]
+
+        x_coords = [x0 + sum(widths[:i+1]) for i in range(len(widths))]
+
+        hover_index = -1
+        hover = rl.check_collision_point_rec(rl.get_mouse_position(), rl.Rectangle(x0, y0, x_coords[-1] - x0, self.text_size))
+        if hover:
+            x_cursor = rl.get_mouse_position().x
+            for i, x_c in enumerate([0] + x_coords[:-1]):
+                if x_c < x_cursor < x_coords[i]:
+                    hover_index = i
+
         if rl.is_mouse_button_pressed(rl.MouseButton.MOUSE_BUTTON_LEFT) and hover:
-            e.is_visible = not e.is_visible
+            if hover_index == 0 and isinstance(e, Group):
+                e.folded = not e.folded
+            elif hover_index in (1, 3):
+                self.set_focus(e.uuid)
+            elif hover_index == 2:
+                e.is_visible = not e.is_visible
         if rl.is_key_pressed(rl.KeyboardKey.KEY_F) and hover:
-            self.set_focus(e.name)
+            self.set_focus(e.uuid)
+        
+        if isinstance(e, Group):
+            index += 1
+            for child in e.members:
+                index = self._draw_list_element(child, index, indent + 1)
+            return index
+        else:
+            return index + 1
 
     def _draw_ui(self):
         '''
             Draws the rest of the UI, most notably the list of entities.
         '''
-        if self.draw_entity_list:
-            for i, e in enumerate(self.scene.entities):
-                self._draw_list_element(e, i)
+        index = 0
+        for v in self.scene.hierarchy.values():
+            index = self._draw_list_element(v, index, 0)
 
     def _draw_grid(self):
         '''
@@ -378,7 +421,7 @@ class DrawApplication():
             for r in [1, 2, 5, 10, 20, 50]:
                 rl.draw_circle_3d(rl.Vector3(0,0,0), r, rl.Vector3(1,0,0), 90, rl.GRAY)
 
-        if (self._camera_state is not None or self.is_scrolling) and self.focus == DEFAULT_FRAME_NAME:
+        if (self._camera_state is not None or self.is_scrolling) and self.focus == DEFAULT_FRAME_UUID:
             ground_pos = rl.Vector3(self.camera.target.x, 0, self.camera.target.z)
             rl.draw_circle_3d(ground_pos, 0.01 * self.camera_distance, rl.Vector3(1,0,0), 90, Color('main').as_rl_color())
             rl.draw_line_3d(ground_pos, self.camera.target, Color('main').as_rl_color())

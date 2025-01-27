@@ -1,4 +1,7 @@
-from typing import Literal, Callable, Optional, Any
+from typing import (
+    Literal, Callable, Optional, Sequence, Any
+)
+import pickle
 from math import ceil
 
 import numpy as np
@@ -9,7 +12,7 @@ ffi = rl.ffi
 
 DEFAULT_WINDOWN_WIDTH = 800
 DEFAULT_WINDOW_HEIGHT = 600
-DEFAULT_FRAME_NAME = 'Default Frame'
+DEFAULT_FRAME_UUID = -1
 
 
 # COLOR HANDLING
@@ -96,7 +99,8 @@ class SceneEntity():
         self.color = Color(color)
         self.positions = np.zeros((1,3))
         self.epochs = np.zeros(1)
-        self.is_visible = True
+        self._is_visible = True
+        self._uuid = -1  # set by Scene on addition
     
     def set_trajectory(self, epochs: np.ndarray, positions: np.ndarray):
         self.epochs = epochs
@@ -119,7 +123,6 @@ class SceneEntity():
         yl, yr = a[idx-1], a[idx]
         return yl + alpha * (yr - yl)
 
-
     def get_position(self, time: float):
         return self._get_property(self.positions, time)
     
@@ -127,6 +130,59 @@ class SceneEntity():
         ''' Gets called when the window is initialized '''
         pass
 
+    @property
+    def uuid(self) -> np.uint64:
+        return self._uuid
+    
+    @property
+    def is_visible(self) -> bool:
+        return self._is_visible
+    
+    @is_visible.setter
+    def is_visible(self, value: bool):
+        self._is_visible = value
+
+
+class Group(SceneEntity):
+    '''
+    Entity to structure scene Hierarchy
+    '''
+    def __init__(self, name: str, *members: Sequence[SceneEntity]):
+        super().__init__(name, 'main')
+        self._members = []
+        self._hierarchy = {}
+        self.folded = False
+        for member in members:
+            self.add(member)
+        
+    def add(self, entitiy: SceneEntity):
+        self._members.append(entitiy)
+        self._hierarchy[entitiy.name] = entitiy
+
+    def remove(self, entity_name: str):
+        if entity_name not in self._hierarchy:
+            raise KeyError(f"No such entity: {entity_name}")
+        self._members.remove(self._hierarchy[entity_name])
+        del self._hierarchy[entity_name]
+
+    def get_position(self, time: float):
+        if len(self._members) == 0:
+            return np.zeros(3)
+        return self._members[0].get_position(time)
+        
+    @property
+    def members(self):
+        return self._members
+    
+    @property
+    def is_visible(self) -> bool:
+        return self._is_visible
+    
+    @is_visible.setter
+    def is_visible(self, value: bool):
+        self._is_visible = value
+        for member in self.members:
+            member.is_visible = value
 
 class TransformShape(SceneEntity):
     ''' 
@@ -388,6 +444,13 @@ class Body(SceneEntity):
         return cls(np.zeros(1), np.array([[x, y, z]]), *args, **kwargs)
 
 
+def _find_all_in_lookup(lookup: dict[str, SceneEntity]):
+    for k, v in lookup.items():
+        yield v
+        if isinstance(v, Group):
+            for entity in _find_all_in_lookup(v._hierarchy):
+                yield entity
+
 class Scene():
     '''
     All the data that is needed to render a scene in spacetrace
@@ -409,46 +472,80 @@ class Scene():
         self.bodies = []
         self.vectors = []
         self.transforms = []
+        self.groups = []
 
         self.trajectory_patches = []
         self.time_bounds = [np.inf, -np.inf]
+        self.hierarchy = {}
         self.lookup = {}
-        origin_frame = TransformShape.fixed(np.zeros(3), np.eye(3) * 100, name=DEFAULT_FRAME_NAME, 
+
+        origin_frame = TransformShape.fixed(np.zeros(3), np.eye(3) * 100, name="Origin", 
                                        draw_space=True, axis_colors=('red', 'green', 'blue'))
-        self.transforms.append(origin_frame)
+        self.add(origin_frame)
 
-    def get_entity(self, entity_name: str) -> SceneEntity:
-        if entity_name in self.lookup:
-            return self.lookup[entity_name]
-        else:
-            raise ValueError(f"No such entity: '{entity_name}'")
+    def get_entity(self, entity_path: str) -> SceneEntity:
+        path_elements = entity_path.split("/")
+        cursor = self.hierarchy
+        for path_element in path_elements[:-1]:
+            if path_element in cursor and isinstance(cursor[path_element], Group):
+                cursor = cursor[path_element]._hierarchy
+            else:
+                raise ValueError(f"Invalid path: '{entity_path}'")
+        if path_elements[-1] in cursor:
+            return cursor[path_elements[-1]]
+        raise ValueError(f"Invalid path: '{entity_path}'")
 
-    def add(self, entity: SceneEntity) -> None:
+
+    def add(self, *entities: SceneEntity) -> None:
         '''
         Adds scene entity to the scene. Scene entities can be Trajectory, Body, VectorShape or TransformShape
         '''
-        entity_name_suffix_index = 2
-        entity_original_name = entity.name
-        while entity.name in [e.name for e in self.entities]:
-            entity.name = entity_original_name + " " + str(entity_name_suffix_index)
-            entity_name_suffix_index += 1
-        
-        if isinstance(entity, Trajectory):
-            entity._scene_index = len(self.trajectories)
-            self.trajectories.append(entity)
-        elif isinstance(entity, Body):
-            self.bodies.append(entity)
-        elif isinstance(entity, VectorShape):
-            self.vectors.append(entity)
-        elif isinstance(entity, TransformShape):
-            self.transforms.append(entity)
-        else:
-            raise TypeError(f"Type not supported: '{type(entity)}'")
-        
-        if self.time_bounds[0] > entity.epochs[0]:
-            self.time_bounds[0] = entity.epochs[0]
-        if self.time_bounds[1] < entity.epochs[-1]:
-            self.time_bounds[1] = entity.epochs[-1]
+        for entity in entities:
+            entity_name_suffix_index = 2
+            entity_original_name = entity.name
+            while entity.name in [e.name for e in self.entities]:
+                entity.name = entity_original_name + " " + str(entity_name_suffix_index)
+                entity_name_suffix_index += 1
+
+            """
+            path_elements = entity.name.split("/")
+            cursor = self.lookup
+            for path_element in path_elements[:-1]:
+                if path_element not in cursor:
+                    cursor[path_element] = Group([], path_element)
+                cursor = cursor[path_element]
+            cursor.add(entity)
+            """
+            self.hierarchy[entity.name] = entity
+
+            if isinstance(entity, Group):
+                attached_entities = list(_find_all_in_lookup(entity._hierarchy)) + [entity]
+            else:
+                attached_entities = [entity]
+
+            for attached in attached_entities:
+                uuid = np.random.randint(np.array([2**64]), size=1, dtype=np.uint64)[0]
+                self.lookup[uuid] = attached
+                attached._uuid = uuid
+
+                if isinstance(attached, Trajectory):
+                    attached._scene_index = len(self.trajectories)
+                    self.trajectories.append(attached)
+                elif isinstance(attached, Body):
+                    self.bodies.append(attached)
+                elif isinstance(attached, VectorShape):
+                    self.vectors.append(attached)
+                elif isinstance(attached, TransformShape):
+                    self.transforms.append(attached)
+                elif isinstance(attached, Group):
+                    self.groups.append(attached)
+                else:
+                    raise TypeError(f"Type not supported: '{type(attached)}'")
+                
+                if self.time_bounds[0] > attached.epochs[0]:
+                    self.time_bounds[0] = attached.epochs[0]
+                if self.time_bounds[1] < attached.epochs[-1]:
+                    self.time_bounds[1] = attached.epochs[-1]
 
     def _add_trajectory_patch(self, epochs: np.ndarray, positions: np.ndarray, 
                               deltas: Optional[np.ndarray], trajectory_index: int):
@@ -499,18 +596,16 @@ class Scene():
         for entity in self.entities:
             entity.on_setup(self, draw_app)
 
+    def save(self, path):
+        pickle.dump(self, path)
+    
+    def load(self, path):
+        self = pickle.load(path)
+
     @property
     def entities(self):
-        ''' Generates all entities in the scene '''
-        for trajectory in self.trajectories:
-            yield trajectory
-        for body in self.bodies:
-            yield body
-        for transform in self.transforms:
-            yield transform
-        for vector in self.vectors:
-            yield vector
-
+        ''' Generates all non-group entities in the scene '''
+        return _find_all_in_lookup(self.hierarchy)
 
 def _create_vb_attribute(array: np.ndarray, index: int):
     ''' Helper function to create vertex buffer attributes '''

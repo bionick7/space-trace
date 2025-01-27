@@ -64,5 +64,11 @@ For more details see the documentation within the source files (`spacetrace/*`) 
 - Added new example, illustrating usage of transforms
 - Window only pops up when scene is displayed
 
+### 0.2.2
+- `add` now accepts multiple entities
+- Scene hierarchy
+- Custom font
+(- Can save and load scenes)
+
 ## License
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.

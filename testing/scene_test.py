@@ -93,5 +93,27 @@ class TestScene(unittest.TestCase):
         self.assertEqual(self.scene.time_bounds[0], min_t)
         self.assertEqual(self.scene.time_bounds[1], max_t)
 
+    def test_hierarchy(self):
+        self.scene.add(
+            Body.fixed(0, 0, 0, 1, name="A/1/1"),
+            Body.fixed(0, 0, 0, 1, name="A/1/2"),
+            Body.fixed(0, 0, 0, 1, name="A/2/2"),
+            Body.fixed(0, 0, 0, 1, name="A/2/2"),
+            Body.fixed(0, 0, 0, 1, name="B/2/2"),
+            Body.fixed(0, 0, 0, 1, name="C"),
+        )
+
+        self.assertDictEqual(
+            self.scene._hierarchy, 
+            {
+                "A": {
+                    "1": { "1": "A/1/1", "2": "A/1/2" } ,
+                    "2": { "2": "A/2/2", "2 2": "A/2/2 2" },
+                },
+                "B": { "2": { "2": "B/2/2" } },
+                "C": "C",
+            }
+        )
+
 if __name__ == "__main__":
     unittest.main()
