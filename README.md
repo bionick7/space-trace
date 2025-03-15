@@ -68,7 +68,13 @@ For more details see the documentation within the source files (`spacetrace/*`) 
 - `add` now accepts multiple entities
 - Scene hierarchy
 - Custom font
-(- Can save and load scenes)
+- Can save and load scenes
+- Changed how colors work again
+- 
+
+
+## Credits
+Textures from https://planetpixelemporium.com/earth.html
 
 ## License
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.

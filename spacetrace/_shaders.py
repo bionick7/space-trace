@@ -57,3 +57,62 @@ void main() {
     }
 }
 """
+
+planet_shader_vs = """
+#version 330
+
+in vec3 vertexPosition;
+in vec2 vertexTexCoord;
+
+out vec2 fragTexCoord;
+
+uniform mat4 mvp;
+
+const float PI = 3.14159265359;
+
+void main() {
+    fragTexCoord = vertexTexCoord.yx;  // Not setup yet
+    //fragTexCoord = vec2(
+    //    atan(vertexPosition.x, vertexPosition.z) / (2 * PI) + 0.5,
+    //	- 0.5 - asin(vertexPosition.y / length(vertexPosition)) / PI
+    //);
+    
+	gl_Position = mvp * vec4(vertexPosition, 1.0);
+}
+
+"""
+
+planet_shader_fs = """
+#version 330
+
+// Input uniform values
+uniform vec4 fragColor;
+
+uniform sampler2D albedoMap;
+uniform sampler2D mraMap;
+uniform sampler2D normalMap;
+
+uniform vec2 tiling;
+uniform vec2 offset;
+
+uniform int useTexAlbedo;
+uniform int useTexNormal;
+uniform int useTexMRA;
+
+uniform vec4  albedoColor;
+uniform vec4  emissiveColor;
+uniform float normalValue;
+uniform float metallicValue;
+uniform float roughnessValue;
+
+//uniform vec3 light_direction
+
+// Output fragment color
+in vec2 fragTexCoord;
+out vec4 finalColor;
+
+void main() {
+    vec3 albedo = texture(albedoMap, fragTexCoord).rgb;    
+    finalColor = vec4(albedo, 1.0);
+}
+"""

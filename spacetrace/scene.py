@@ -1,5 +1,6 @@
+from .utils import *
 from typing import (
-    Literal, Callable, Optional, Sequence, Any
+    Literal, Callable, Optional, Any
 )
 import pickle
 from math import ceil
@@ -9,70 +10,6 @@ import pyray as rl
 import raylib as rl_raw
 
 ffi = rl.ffi
-
-DEFAULT_WINDOWN_WIDTH = 800
-DEFAULT_WINDOW_HEIGHT = 600
-DEFAULT_FRAME_UUID = -1
-
-
-# COLOR HANDLING
-# ==============
-
-def __hex_to_color(hex: int) -> tuple[float, float, float]:
-    return (
-        ((hex >> 16) & 0xFF) / 255,
-        ((hex >> 8) & 0xFF) / 255, 
-        (hex & 0xFF) / 255
-    )
-
-# Preload in hidden global scope
-__palette = {}
-__palette['bg'] = __hex_to_color(0x12141c)
-__palette['blue'] = __hex_to_color(0x454e7e)
-__palette['green'] = __hex_to_color(0x4Fc76C)
-__palette['red'] = __hex_to_color(0xFF5155)
-__palette['white'] = __hex_to_color(0xfaf7d5)
-__palette['gray'] = __hex_to_color(0x735e4c)
-__palette['main'] = __palette['white']
-__palette['accent'] = __palette['blue']
-__palette['grey'] = __palette['gray']
-
-_ColorIDLiteral = Literal['bg', 'blue', 'green', 'red', 'white', 'main', 'accent', 'gray', 'grey']
-_ColorType = tuple[float, float, float] | _ColorIDLiteral
-
-def default_palette(name: _ColorIDLiteral) -> tuple[float, float, float]:
-    '''
-    Default color palette for spacetrace.
-    Simple function that returns the corresponding RGB values for a given color name.
-    Returns aggressive magenta as error color.
-
-    Pallette is a modification of https://lospec.com/palette-list/offshore
-    '''
-
-    return __palette.get(name, (1, 0, 1))
-
-
-def _transform_vectors_to_draw_space(inp: np.ndarray) -> np.ndarray:
-    return inp[:,(0,2,1)] * np.array([1,1,-1])[np.newaxis,:]
-
-
-class Color():
-    '''
-    Simple class to handle colors.
-    '''
-    def __init__(self, c: _ColorType, 
-                 palette: Callable[[_ColorIDLiteral], tuple[float, float, float]]=default_palette):
-        if isinstance(c, tuple):
-            self.rgb = c
-        else:
-            self.rgb = palette(c)
-
-    def as_rl_color(self) -> rl.Color:
-        r, g, b = self.rgb
-        return rl.Color(int(r*255), int(g*255), int(b*255), 255)
-    
-    def as_array(self) -> rl.Color:
-        return np.array([*self.rgb, 1], np.float32)
 
 
 #     SCENE
@@ -85,7 +22,7 @@ class SceneEntity():
     Has a name, color, visibility flag as well as a trajectory through time.
     '''
 
-    def __init__(self, name: str, color: _ColorType='main'):
+    def __init__(self, name: str, color: ColorType='main'):
         '''
         Initializes the entity with a name and a color
         name: str
@@ -96,7 +33,10 @@ class SceneEntity():
             Default colors are 'main', 'accent', 'bg', 'blue', 'green', 'red', 'white'
         '''
         self.name = name
-        self.color = Color(color)
+        self.color_id = color
+        # Purple: color not in palette
+        # Yellow: setup not called
+        self.color = hex_to_color(0xFFFF00)
         self.positions = np.zeros((1,3))
         self.epochs = np.zeros(1)
         self._is_visible = True
@@ -128,7 +68,7 @@ class SceneEntity():
     
     def on_setup(self, scene, draw_app):
         ''' Gets called when the window is initialized '''
-        pass
+        self.color = scene.palette(self.color_id)
 
     @property
     def uuid(self) -> np.uint64:
@@ -147,7 +87,7 @@ class Group(SceneEntity):
     '''
     Entity to structure scene Hierarchy
     '''
-    def __init__(self, name: str, *members: Sequence[SceneEntity]):
+    def __init__(self, name: str, *members: SceneEntity):
         super().__init__(name, 'main')
         self._members = []
         self._hierarchy = {}
@@ -184,14 +124,15 @@ class Group(SceneEntity):
         for member in self.members:
             member.is_visible = value
 
+
 class TransformShape(SceneEntity):
     ''' 
     Reference frame, represented by 3 orthogonal arrows
     By default, the identiy transform is always in the scene
     '''
     def __init__(self, epochs: np.ndarray, origins: np.ndarray, bases: np.ndarray, 
-                 name: str="Transform", color: _ColorType='main', draw_space: bool=False,
-                 axis_colors: Optional[tuple[_ColorType, _ColorType, _ColorType]]=None):
+                 name: str="Transform", color: ColorType='main', draw_space: bool=False,
+                 axis_colors: Optional[tuple[ColorType, ColorType, ColorType]]=['red', 'green', 'blue']):
         '''
         Initializes a transform entity
         epochs: np.ndarray (N,)
@@ -216,28 +157,37 @@ class TransformShape(SceneEntity):
         N = len(epochs)
         
         if origins.shape == (N, 3):
-            self.positions = _transform_vectors_to_draw_space(origins)
+            self.positions = transform_vectors_to_draw_space(origins)
         elif origins.shape == (3,):
-            self.positions = _transform_vectors_to_draw_space(np.repeat(origins[np.newaxis,:], N, axis=0))
+            self.positions = transform_vectors_to_draw_space(np.repeat(origins[np.newaxis,:], N, axis=0))
         else:
             raise ValueError("origins must be of shape (N, 3) or (3,), where N is the epoch length")
         
         self.bases = np.zeros((N, 3, 3))
         if bases.shape == (N, 3, 3):
             for i in range(3):
-                self.bases[:,:,i] = _transform_vectors_to_draw_space(bases[:,:,i])
+                self.bases[:,:,i] = transform_vectors_to_draw_space(bases[:,:,i])
         elif bases.shape == (3, 3):
             for i in range(3):
-                self.bases[:,:,i] = _transform_vectors_to_draw_space(bases[:,i])
+                self.bases[:,:,i] = transform_vectors_to_draw_space(bases[:,i])
         else:
             raise ValueError("bases must be of shape (N, 3, 3) or (3, 3), where N is the epoch length")
         
         self.epochs = epochs
         self.draw_space = draw_space
-        self.axis_colors = axis_colors
+        self.axis_colors_ids = axis_colors
 
     def get_basis(self, time: float):
         return self._get_property(self.bases, time)
+    
+    def on_setup(self, scene, draw_app):
+        super().on_setup(scene, draw_app)
+        if self.axis_colors_ids is None:
+            self.axis_colors = None
+        else:
+            self.axis_colors = [
+                scene.palette(axis_color) for axis_color in self.axis_colors_ids
+            ]
     
     @classmethod
     def fixed(cls, origin: np.ndarray, M: np.ndarray, *args, **kwargs):
@@ -255,26 +205,25 @@ class TransformShape(SceneEntity):
         '''
         return cls(np.zeros(1), origin[np.newaxis,:], M[np.newaxis,:,:], *args, **kwargs)
 
-    def get_x_color(self) -> Color:
+    def get_x_color(self) -> ColorType:
         if self.axis_colors is None:
             return self.color
-        return Color(self.axis_colors[0])
+        return self.axis_colors[0]
 
-    def get_y_color(self) -> Color:
+    def get_y_color(self) -> ColorType:
         if self.axis_colors is None:
             return self.color
-        return Color(self.axis_colors[1])
+        return self.axis_colors[1]
 
-    def get_z_color(self) -> Color:
+    def get_z_color(self) -> ColorType:
         if self.axis_colors is None:
             return self.color
-        return Color(self.axis_colors[2])
-
+        return self.axis_colors[2]
 
 
 class VectorShape(SceneEntity):
     def __init__(self, epochs: np.ndarray, origins: np.ndarray, vectors: np.ndarray, 
-                 name: str="Vector", color: _ColorType='main', draw_space: float=False):
+                 name: str="Vector", color: ColorType='main', draw_space: float=False):
         '''
         Initializes a transform entity
         epochs: np.ndarray (N,)
@@ -299,16 +248,16 @@ class VectorShape(SceneEntity):
         N = len(epochs)        
         
         if origins.shape == (N, 3):
-            self.positions = _transform_vectors_to_draw_space(origins)
+            self.positions = transform_vectors_to_draw_space(origins)
         elif origins.shape == (3,):
-            self.positions = _transform_vectors_to_draw_space(np.repeat(origins[np.newaxis,:], N, axis=0))
+            self.positions = transform_vectors_to_draw_space(np.repeat(origins[np.newaxis,:], N, axis=0))
         else:
             raise ValueError("origins must be of shape (N, 3) or (3,), where N is the epoch length")
         
         if vectors.shape == (N, 3):
-            self.vectors = _transform_vectors_to_draw_space(vectors)
+            self.vectors = transform_vectors_to_draw_space(vectors)
         elif vectors.shape == (3,):
-            self.vectors = _transform_vectors_to_draw_space(np.repeat(vectors[np.newaxis,:], N, axis=0))
+            self.vectors = transform_vectors_to_draw_space(np.repeat(vectors[np.newaxis,:], N, axis=0))
         else:
             raise ValueError("directions must be of shape (N, 3) or (3,), where N is the epoch length")
         
@@ -335,7 +284,7 @@ class VectorShape(SceneEntity):
             color in the color palette.
             Default colors are 'main', 'accent', 'bg', 'blue', 'green', 'red', 'white'
         '''
-        return VectorShape(cls, np.zeros(1), np.array([[x, y, z]]), np.array([[vx, vy, vz]]), *args, **kwargs)
+        return cls(np.zeros(1), np.array([[x, y, z]]), np.array([[vx, vy, vz]]), *args, **kwargs)
 
 
 class Trajectory(SceneEntity):
@@ -345,7 +294,7 @@ class Trajectory(SceneEntity):
     This is mostly to access the metadata and to support get_position
     '''
     def __init__(self, epochs: np.ndarray, states: np.ndarray, 
-                 name: str='Trajectory', color: _ColorType='main'):
+                 name: str='Trajectory', color: ColorType='main'):
         '''
         Adds a trajectory to the scene. The trajectory is a sequence of states in space over time.
         epochs: np.ndarray (N,)
@@ -367,11 +316,11 @@ class Trajectory(SceneEntity):
             raise ValueError("Epochs and states should have the same length")
 
         if states.shape[1] == 3:
-            self.positions = _transform_vectors_to_draw_space(states)
+            self.positions = transform_vectors_to_draw_space(states)
             self.velocities = None
         elif states.shape[1] == 6:
-            self.positions = _transform_vectors_to_draw_space(states)
-            self.velocities = _transform_vectors_to_draw_space(states[:,3:])
+            self.positions = transform_vectors_to_draw_space(states)
+            self.velocities = transform_vectors_to_draw_space(states[:,3:])
         else:
             raise ValueError("States should have 3 or 6 columns")
             
@@ -388,6 +337,7 @@ class Trajectory(SceneEntity):
             yield self.epochs[start:end], self.positions[start:end], self.velocities
 
     def on_setup(self, scene, draw_app):
+        super().on_setup(scene, draw_app)
         for patch in self.patches:
             scene._add_trajectory_patch(*patch, self._scene_index)
 
@@ -398,11 +348,12 @@ class Body(SceneEntity):
     Represented by a colored sphere of a certain radius.
     Mostly represents a celestial body.
     '''
-    def __init__(self, epochs: np.ndarray, states: np.ndarray, radius: float, name: str="Body", 
-                 color: _ColorType='main', shape: Literal['sphere', 'cross'] = 'sphere'):
+    def __init__(self, epochs: np.ndarray, states: np.ndarray, radius: float=0, name: str="Body", 
+                 color: ColorType='main', shape: Literal['sphere', 'cross'] = 'sphere',
+                 albedo_map_path: Optional[str]=None, specular_map_path: Optional[str]=None,
+                 normal_map_path: Optional[str]=None):
         ''' 
-        Adds a static body (without trajectory) to the scene. Usefull for central bodies
-        in a body-centric reference frame.
+        Adds a body to the scene.
         epochs: np.ndarray (N,)
             Time values for each state
         states: np.ndarray (N, 3) or (N, 6)
@@ -416,12 +367,48 @@ class Body(SceneEntity):
             Default colors are 'main', 'accent', 'bg', 'blue', 'green', 'red', 'white'
         shape: shape that will be rendered
             can be 'sphere' for planetary bodies or 'cross' for points of interest without dimension
+        albedo_map_path: Optional[str]
+            Path to an color or albedo map for the body
+        specular_map_path: Optional[str]
+            Path to a specularity map for the body
+        normal_map_path: Optional[str]
+            Path to a normal map for the body
         '''
+
         super().__init__(name, color)
         self.radius = radius
         self.shape = shape
         self.positions = states[:,(0, 2, 1)] * np.array([1,1,-1])[np.newaxis,:]
         self.epochs = epochs
+
+        self.albedo_map_path = albedo_map_path
+        self.specular_map_path = specular_map_path
+        self.normal_map_path = normal_map_path
+
+        # Predefine in case 'on_setup' is not called
+        self.maps_enabled = int(0)
+        self.albedo_map = None
+        self.specular_map = None
+        self.normal_map = None
+
+    def on_setup(self, scene, draw_app):
+        self.maps_enabled = int(0)
+        
+        find_path = os.path.join(draw_app.resource_path, "planet_textures")
+        if isinstance(self.albedo_map_path, str):
+            self.albedo_map = rl.load_texture(get_local_or_global_path(find_path, self.albedo_map_path))
+            if self.albedo_map is not None:
+                self.maps_enabled |= 0x01
+        if isinstance(self.specular_map_path, str):
+            self.specular_map = rl.load_texture(get_local_or_global_path(find_path, self.specular_map_path))
+            if self.specular_map is not None:
+                self.maps_enabled |= 0x02
+        if isinstance(self.normal_map_path, str):
+            self.normal_map = rl.load_texture(get_local_or_global_path(find_path, self.normal_map_path))
+            if self.normal_map is not None:
+                self.maps_enabled |= 0x04
+
+        super().on_setup(scene, draw_app)
 
     @classmethod
     def fixed(cls, x: float, y: float, z: float, *args, **kwargs):
@@ -458,14 +445,16 @@ class Scene():
     Entities can be Trajectories, Bodies or the main Reference Frame.
     '''
 
-    def __init__(self, scale_factor: float=1e-7):
+    def __init__(self, scale_factor: float=1e-7, palette: Callable[[str], ColorType]=Themes.default_palette):
         '''
         Initializes the scene with a scale factor. The scale factor is used to convert
         provided positions into rendering units. A scale factor of 10^-7 is provided,
         assuming that positions are in meters and the trajectories are on the scale of
         earth orbits.
 
-        Adjust scale_factor, such that the largest dimensions is on the order of magnitude 1-10
+        default_palette: Callable[[str], ColorType]
+            Represents the color palette of the scene
+            Function that returns the RGB values for a given color name
         '''
         self.scale_factor = scale_factor
         self.trajectories = []
@@ -474,13 +463,15 @@ class Scene():
         self.transforms = []
         self.groups = []
 
+        self.palette = palette
+
         self.trajectory_patches = []
         self.time_bounds = [np.inf, -np.inf]
         self.hierarchy = {}
         self.lookup = {}
 
         origin_frame = TransformShape.fixed(np.zeros(3), np.eye(3) * 100, name="Origin", 
-                                       draw_space=True, axis_colors=('red', 'green', 'blue'))
+                                       draw_space=True, axis_colors=('x-axis', 'y-axis', 'z-axis'))
         self.add(origin_frame)
 
     def get_entity(self, entity_path: str) -> SceneEntity:
@@ -574,11 +565,9 @@ class Scene():
         _create_vb_attribute(double_stiched_time[:,np.newaxis], 1)
         _create_vb_attribute(double_stiched_dirs, 2)
 
-        """ 
-        0 - 1
-        | / |
-        2 - 3 
-        """
+        """  0 - 1
+             | / |
+             2 - 3  """
 
         triangle_buffer = np.zeros((len(positions) - 1) * 6, np.uint16)
         enum = np.arange(0, (len(positions) - 1)*2, 2)
@@ -597,10 +586,14 @@ class Scene():
             entity.on_setup(self, draw_app)
 
     def save(self, path):
-        pickle.dump(self, path)
+        with open(path, 'wb') as f:
+            pickle.dump(self, f)
     
-    def load(self, path):
-        self = pickle.load(path)
+    @classmethod
+    def load(cls, path):
+        with open(path, 'rb') as f:
+            loaded = pickle.load(f)
+        return loaded
 
     @property
     def entities(self):

@@ -1,5 +1,6 @@
-from spacetrace._shaders import *
-from spacetrace.scene import *
+from ._shaders import *
+from .utils import *
+from .scene import *
 
 import numpy as np
 import pyray as rl
@@ -9,6 +10,7 @@ import os.path
 
 def _init_raylib_window():
     # Initiialize raylib graphics window
+    rl.set_trace_log_level(rl.TraceLogLevel.LOG_WARNING)
     rl.set_config_flags(rl.ConfigFlags.FLAG_MSAA_4X_HINT 
                       | rl.ConfigFlags.FLAG_WINDOW_RESIZABLE
                       | rl.ConfigFlags.FLAG_VSYNC_HINT)
@@ -99,6 +101,8 @@ class DrawApplication():
 
         # internal state keeping
         self._traj_shader = None
+        self._planet_shader = None
+
         self._camera_state = None
         self._last_scroll_event = 1e6
         self._time_setting = False
@@ -181,11 +185,6 @@ class DrawApplication():
 
     def setup(self):
         ''' Setup application after the scene has been fully populated. '''
-        if not rl.is_window_ready():
-            _init_raylib_window()
-        main_font_path = os.path.join(os.path.dirname(__file__), 'resources', 'SpaceMono-Regular.ttf')
-        self.main_font = rl.load_font_ex(main_font_path, self.text_size, ffi.NULL, 0)
-        self.scene.on_setup(self)
 
         if np.isfinite(self.scene.time_bounds[0]):
             self.time_bounds = self.scene.time_bounds
@@ -193,12 +192,35 @@ class DrawApplication():
             self.time_bounds = [0, 0]
         self.current_time = self.time_bounds[1]
 
-        # Load trajectory shader
+        print("Initializing Window ...")
+        if not rl.is_window_ready():
+            _init_raylib_window()
+
+        print("Loading default assets ...")
+        self.resource_path = os.path.join(os.path.dirname(__file__), 'resources')
+        main_font_path = os.path.join(self.resource_path, 'SpaceMono-Regular.ttf')
+        self.main_font = rl.load_font_ex(main_font_path, self.text_size, ffi.NULL, 0)
+        self.default_texture = rl.load_texture(os.path.join(self.resource_path, 'default_texture.png'))
+        self.sphere_mesh = rl.gen_mesh_sphere(1, 32, 64)
+        #self.sphere_mesh = rl.load_model(os.path.join(self.resource_path, 'sphere.obj')).meshes[0]
+        
+        print("Loading shaders ...")
         self._traj_shader = rl.load_shader_from_memory(trajectory_shader_vs, trajectory_shader_fs)
-        self.traj_locs_window_size = rl.get_shader_location(self._traj_shader, "window_size")
-        self.traj_locs_mvp = rl.get_shader_location(self._traj_shader, "mvp")
-        self.traj_locs_color = rl.get_shader_location(self._traj_shader, "color")
-        self.traj_locs_time = rl.get_shader_location(self._traj_shader, "current_t")
+        self._traj_locs_window_size = rl.get_shader_location(self._traj_shader, "window_size")
+        self._traj_locs_mvp = rl.get_shader_location(self._traj_shader, "mvp")
+        self._traj_locs_color = rl.get_shader_location(self._traj_shader, "color")
+        self._traj_locs_time = rl.get_shader_location(self._traj_shader, "current_t")
+
+        self._planet_shader = rl.load_shader_from_memory(planet_shader_vs, planet_shader_fs)
+        self._planet_locs_maps_enabled = rl.get_shader_location(self._planet_shader, "maps_enabled")
+        self._planet_locs_mvp = rl.get_shader_location(self._planet_shader, "mvp")
+        self._planet_locs_color = rl.get_shader_location(self._planet_shader, "color")
+        self._planet_locs_albedo_map = rl.get_shader_location(self._planet_shader, "albedo_map")
+        self._planet_locs_normal_map = rl.get_shader_location(self._planet_shader, "normal_map")
+        self._planet_locs_specular_map = rl.get_shader_location(self._planet_shader, "specular_map")
+
+        print("Setting up scene objects ...")
+        self.scene.on_setup(self)
 
     def destroy(self):
         ''' Clean up after the application is done to prevent memory leaks. '''
@@ -222,19 +244,18 @@ class DrawApplication():
         '''
                 
         rl.begin_shader_mode(self._traj_shader)
-        #rl.draw_cube(rl.vector3_zero(), 1, 1, 1, rl.BLUE)
 
         mat_projection = rl.rl_get_matrix_projection()
         mat_model_view = rl.rl_get_matrix_modelview()
         mat_model_view_projection = rl.matrix_multiply(mat_model_view, mat_projection)
 
         screen_size = rl.Vector2(rl.get_screen_width(), rl.get_screen_height())
-        rl.set_shader_value(self._traj_shader, self.traj_locs_window_size, screen_size, 
+        rl.set_shader_value(self._traj_shader, self._traj_locs_window_size, screen_size, 
                             rl.ShaderUniformDataType.SHADER_UNIFORM_VEC2)
         time_ptr = ffi.new('float *', self.current_time)
-        rl.set_shader_value(self._traj_shader, self.traj_locs_time, time_ptr, 
+        rl.set_shader_value(self._traj_shader, self._traj_locs_time, time_ptr, 
                             rl.ShaderUniformDataType.SHADER_UNIFORM_FLOAT)
-        rl.set_shader_value_matrix(self._traj_shader, self.traj_locs_mvp, mat_model_view_projection)
+        rl.set_shader_value_matrix(self._traj_shader, self._traj_locs_mvp, mat_model_view_projection)
 
 
         for traj in self.scene.trajectory_patches:
@@ -244,7 +265,7 @@ class DrawApplication():
 
             color = self.scene.trajectories[traj_index].color.as_array()
             color_c = ffi.cast("Color *", ffi.from_buffer(color))
-            rl.set_shader_value(self._traj_shader, self.traj_locs_color, color_c, 
+            rl.set_shader_value(self._traj_shader, self._traj_locs_color, color_c, 
                                 rl.ShaderUniformDataType.SHADER_UNIFORM_VEC4)
 
             rl.rl_enable_vertex_array(vao)
@@ -310,6 +331,48 @@ class DrawApplication():
         rl.draw_line_3d(rl.vector3_add(point, rl.Vector3(0,-extend,0)), rl.vector3_add(point, rl.Vector3(0,extend,0)), rl_color)
         rl.draw_line_3d(rl.vector3_add(point, rl.Vector3(0,0,-extend)), rl.vector3_add(point, rl.Vector3(0,0,extend)), rl_color)
 
+    def _draw_shaded_planet(self, body: Body, pos_3d: rl.Vector3, r: float, color: rl.Color):
+        rl.begin_shader_mode(self._planet_shader)
+        """
+        rl.set_shader_value(self._planet_shader, self._planet_locs_maps_enabled, 
+                            ffi.new('int *', body.maps_enabled),
+                            rl.ShaderUniformDataType.SHADER_UNIFORM_INT)
+        if body.albedo_map is None:
+            rl.set_shader_value_texture(self._planet_shader, self._planet_locs_albedo_map, self.default_texture)
+        else:
+            rl.set_shader_value_texture(self._planet_shader, self._planet_locs_albedo_map, body.albedo_map)
+
+        if body.specular_map is None:
+            rl.set_shader_value_texture(self._planet_shader, self._planet_locs_specular_map, self.default_texture)
+        else:
+            rl.set_shader_value_texture(self._planet_shader, self._planet_locs_specular_map, body.specular_map)
+
+        if body.normal_map is None:
+            rl.set_shader_value_texture(self._planet_shader, self._planet_locs_normal_map, self.default_texture)
+        else:
+            rl.set_shader_value_texture(self._planet_shader, self._planet_locs_normal_map, body.normal_map)"
+        """
+
+        material = rl.load_material_default()
+        material.shader = self._planet_shader
+        if body.albedo_map is not None:
+            material.maps[rl.MaterialMapIndex.MATERIAL_MAP_ALBEDO].texture = body.albedo_map
+        if body.specular_map is not None:
+            material.maps[rl.MaterialMapIndex.MATERIAL_MAP_ROUGHNESS].texture = body.specular_map
+        if body.normal_map is not None:
+            material.maps[rl.MaterialMapIndex.MATERIAL_MAP_NORMAL].texture = body.specular_map
+            
+        transform_matrix = rl.matrix_multiply(
+            rl.matrix_multiply(
+                rl.matrix_rotate_x(-rl.DEG2RAD * 90),
+                rl.matrix_scale(r, r, r),
+            ),
+            rl.matrix_translate(pos_3d.x, pos_3d.y, pos_3d.z),
+        )
+        rl.draw_mesh(self.sphere_mesh, material, transform_matrix)
+        #rl.draw_sphere_ex(pos_3d, r, 32, 64, color)
+        rl.end_shader_mode()
+
     def _draw_bodies(self):
         '''
             Draws all the bodies in the scene.
@@ -327,8 +390,10 @@ class DrawApplication():
                 rl.draw_line_3d(pos_2d, pos_3d, rl.color_alpha(color, 0.5))
             if body.shape == 'cross':
                 self._draw_axis_cross(pos_3d, r, color)
-            else:
+            elif self._planet_shader is None:
                 rl.draw_sphere_ex(pos_3d, r, 32, 64, color)
+            else:
+                self._draw_shaded_planet(body, pos_3d, r, color)
             
     def _draw_time_bar(self):
         '''
@@ -340,7 +405,7 @@ class DrawApplication():
         #rl.draw_rectangle(0, rl.get_screen_height() - TIMEBAR_HIGHT, rl.get_screen_width(), TIMEBAR_HIGHT, rl.GRAY)
         t = (self.current_time - self.time_bounds[0]) / (self.time_bounds[1] - self.time_bounds[0])
         rl.draw_rectangle(0, rl.get_screen_height() - self.timebar_height, int(t * rl.get_screen_width()), self.timebar_height, 
-                          Color('main').as_rl_color())
+                          self.scene.palette('main').as_rl_color())
 
         mouse_pos = rl.get_mouse_position()
         slider_hover = mouse_pos.y > rl.get_screen_height() - self.timebar_height
@@ -368,7 +433,7 @@ class DrawApplication():
 
         texts = [text_foling, text_focus, text_visible, display_name]
 
-        color = Color('main').as_rl_color() if e.is_visible else Color('grey').as_rl_color()
+        color = self.scene.palette('main').as_rl_color() if e.is_visible else self.scene.palette('grey').as_rl_color()
 
         if self.main_font is None:
             rl.draw_text("".join(texts), x0, y0, self.text_size, color)
@@ -379,6 +444,7 @@ class DrawApplication():
 
         x_coords = [x0 + sum(widths[:i+1]) for i in range(len(widths))]
 
+        # Check for mouse hovering
         hover_index = -1
         hover = rl.check_collision_point_rec(rl.get_mouse_position(), rl.Rectangle(x0, y0, x_coords[-1] - x0, self.text_size))
         if hover:
@@ -387,6 +453,7 @@ class DrawApplication():
                 if x_c < x_cursor < x_coords[i]:
                     hover_index = i
 
+        # Handle input
         if rl.is_mouse_button_pressed(rl.MouseButton.MOUSE_BUTTON_LEFT) and hover:
             if hover_index == 0 and isinstance(e, Group):
                 e.folded = not e.folded
@@ -397,6 +464,7 @@ class DrawApplication():
         if rl.is_key_pressed(rl.KeyboardKey.KEY_F) and hover:
             self.set_focus(e.uuid)
         
+        # Handle groups recursively
         if isinstance(e, Group):
             index += 1
             for child in e.members:
@@ -423,8 +491,8 @@ class DrawApplication():
 
         if (self._camera_state is not None or self.is_scrolling) and self.focus == DEFAULT_FRAME_UUID:
             ground_pos = rl.Vector3(self.camera.target.x, 0, self.camera.target.z)
-            rl.draw_circle_3d(ground_pos, 0.01 * self.camera_distance, rl.Vector3(1,0,0), 90, Color('main').as_rl_color())
-            rl.draw_line_3d(ground_pos, self.camera.target, Color('main').as_rl_color())
+            rl.draw_circle_3d(ground_pos, 0.01 * self.camera_distance, rl.Vector3(1,0,0), 90, self.scene.palette('main').as_rl_color())
+            rl.draw_line_3d(ground_pos, self.camera.target, self.scene.palette('main').as_rl_color())
 
     def step(self):
         '''
@@ -434,7 +502,7 @@ class DrawApplication():
 
         rl.begin_drawing()
         
-        rl.clear_background(Color('bg').as_rl_color())
+        rl.clear_background(self.scene.palette('bg').as_rl_color())
 
         rl.begin_mode_3d(self.camera)
         self._draw_grid()

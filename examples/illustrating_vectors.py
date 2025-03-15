@@ -1,7 +1,7 @@
 import numpy as np
 from _3bp_source import rk4_step
 
-import spacetrace
+import spacetrace as st
 
 # Generate orbit, forces, etc
 def f(y, t):
@@ -29,14 +29,27 @@ for i in range(len(epochs)):
     rsw[i,:,1] = np.cross(rsw[i,:,2], rsw[i,:,0])
 
 # Show output
-scene = spacetrace.Scene()
+scene = st.Scene()
 
-scene.add(spacetrace.Trajectory(epochs, yy))
-# Draw velocity and acceleration vectors over time (need to be scaled to new time)
-scene.add(spacetrace.VectorShape(epochs, yy[:,:3], dydt[:,:3] * 1000, name="Vehicle/Velocities"))
-scene.add(spacetrace.VectorShape(epochs, yy[:,:3], dydt[:,3:] * 1000**2, name="Vehicle/Accelerations", color="red"))
-# Draw RSW coordinate system
-scene.add(spacetrace.TransformShape(epochs, yy[:,:3], rsw / scene.scale_factor, name="Vehicle/RSW", axis_colors=('red', 'green', 'blue')))
-# Add earth
-scene.add(spacetrace.Body.fixed(0, 0, 0, radius=6731e3, name="Earth", color="blue"))
-spacetrace.show_scene(scene)
+scene.add(
+    st.Trajectory(epochs, yy),
+    
+    # Add earth
+    st.Body.fixed(0, 0, 0, radius=6731e3, name="Earth", color="blue"),
+
+    st.Group("Vehicle",
+        # Draw velocity and acceleration vectors over time (need to be scaled to new time)
+        st.VectorShape(epochs, yy[:,:3], dydt[:,:3] * 1000, name="Velocities"),
+        st.VectorShape(epochs, yy[:,:3], dydt[:,3:] * 1000**2, name="Accelerations", color="red"),
+        # Draw RSW coordinate system
+        st.TransformShape(epochs, yy[:,:3], rsw / scene.scale_factor, name="RSW", axis_colors=('red', 'green', 'blue')),
+    ),
+)
+
+# Save scene to disk
+scene.save("examples/illustrating_vectors.scene")
+
+# This would load the scene saved previously
+#scene = st.Scene.load("examples/illustrating_vectors.scene")
+
+st.show_scene(scene)
